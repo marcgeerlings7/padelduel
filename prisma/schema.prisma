@@ -1,0 +1,353 @@
+// Prisma schema voor de Padel Ladder App.
+// 1-op-1 vertaling van docs/Database_Schema.sql (zie dat bestand voor de
+// canonieke SQL, ontwerptoelichtingen en de secties die hier niet in
+// Prisma-DSL uit te drukken zijn: partial unique index op member_pair_key,
+// de partial performance-indexen, de CHECK-constraints en de trigger die
+// max_active_duos_per_user afdwingt. Die staan als raw SQL toegevoegd aan
+// migrations/<timestamp>_init/migration.sql.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER  @map("user")
+  ADMIN @map("admin")
+
+  @@map("user_role")
+}
+
+enum ChallengeStatus {
+  PENDING          @map("pending")
+  ACCEPTED         @map("accepted")
+  EXPIRED          @map("expired")
+  COMPLETED        @map("completed")
+  DECLINED         @map("declined")
+  UNPLAYED_TIMEOUT @map("unplayed_timeout")
+
+  @@map("challenge_status")
+}
+
+enum MatchStatus {
+  AWAITING_CONFIRMATION @map("awaiting_confirmation")
+  COMPLETED             @map("completed")
+  DISPUTED              @map("disputed")
+  VOIDED                @map("voided")
+
+  @@map("match_status")
+}
+
+enum DisputeStatus {
+  OPEN                @map("open")
+  RESOLVED_UPHELD     @map("resolved_upheld")
+  RESOLVED_OVERTURNED @map("resolved_overturned")
+
+  @@map("dispute_status")
+}
+
+enum DisputeSubject {
+  MATCH_SCORE @map("match_score")
+  FORFEIT     @map("forfeit")
+
+  @@map("dispute_subject")
+}
+
+/// Toegevoegd in Fase 3 (niet in de oorspronkelijke Database_Schema.sql):
+/// de duo-tabel zelf heeft geen ruimte voor een "voorstel, wacht op
+/// bevestiging"-status (FR-2.2/US-B1/US-B2). Een DuoInvitation bestaat
+/// dus vóór er ooit een Duo-rij is; pas bij acceptatie ontstaan de
+/// echte duo + 2 duo_membership-rijen.
+enum DuoInvitationStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  DECLINED @map("declined")
+
+  @@map("duo_invitation_status")
+}
+
+/// Centrale plek voor tunable business-parameters (PRD §14). Eén rij per
+/// key; de applicatielaag leest/cachet dit — nooit hardcoden op meerdere
+/// plekken (zie CLAUDE.md).
+model PlatformConfig {
+  key         String   @id @db.VarChar(100)
+  value       String   @db.VarChar(255)
+  description String?
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@map("platform_config")
+}
+
+model Region {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(100)
+  slug      String   @unique @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  duos           Duo[]
+  apiClients     ApiClient[]
+  duoInvitations DuoInvitation[]
+
+  @@map("region")
+}
+
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  role         UserRole  @default(USER)
+  isActive     Boolean   @default(false) @map("is_active")
+  activatedAt  DateTime? @map("activated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  memberships              DuoMembership[]
+  submittedMatches         Match[]         @relation("MatchSubmittedBy")
+  confirmedMatches         Match[]         @relation("MatchConfirmedBy")
+  raisedDisputes           Dispute[]       @relation("DisputeRaisedBy")
+  resolvedDisputes         Dispute[]       @relation("DisputeResolvedBy")
+  auditLogEntries          AuditLog[]
+  sentDuoInvitations       DuoInvitation[] @relation("DuoInvitationProposedBy")
+  receivedDuoInvitations   DuoInvitation[] @relation("DuoInvitationInvitedUser")
+  requestedDuoDissolutions Duo[]           @relation("DuoDissolutionRequestedBy")
+
+  @@index([email], map: "idx_app_user_email")
+  @@map("app_user")
+}
+
+/// member_pair_key = gesorteerde concatenatie van de twee user-id's
+/// (bijv. 'uuid-a::uuid-b' met uuid-a < uuid-b), gezet door de
+/// service-laag bij aanmaak. Voorkomt (samen met de partial unique index
+/// in de raw-SQL migratie) dat hetzelfde koppel twee keer tegelijk een
+/// actief duo vormt (FR-2.3).
+model Duo {
+  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                         String    @db.VarChar(100)
+  regionId                     String    @map("region_id") @db.Uuid
+  memberPairKey                String    @map("member_pair_key") @db.VarChar(150)
+  isActive                     Boolean   @default(true) @map("is_active")
+  currentRating                Int       @default(1200) @map("current_rating")
+  matchesPlayed                Int       @default(0) @map("matches_played")
+  dissolutionRequestedAt       DateTime? @map("dissolution_requested_at")
+  // Fase 3-toevoeging: wie de ontbinding heeft aangevraagd, zodat de
+  // ANDERE speler moet bevestigen (US-B3: "vereist bevestiging van beide
+  // leden") — voorkomt dat dezelfde speler zijn eigen verzoek bevestigt.
+  dissolutionRequestedByUserId String?   @map("dissolution_requested_by_user_id") @db.Uuid
+  dissolvedAt                  DateTime? @map("dissolved_at")
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  version                      Int       @default(0)
+
+  region                 Region            @relation(fields: [regionId], references: [id])
+  memberships            DuoMembership[]
+  challengesAsChallenger Challenge[]       @relation("ChallengeChallenger")
+  challengesAsChallenged Challenge[]       @relation("ChallengeChallenged")
+  ratingHistory          RatingHistory[]
+  availability           DuoAvailability[]
+  invitation             DuoInvitation?
+  dissolutionRequestedBy User?             @relation("DuoDissolutionRequestedBy", fields: [dissolutionRequestedByUserId], references: [id])
+
+  // Rating-tier is bewust GEEN kolom: floor(current_rating / tier_size),
+  // analoog aan de afgeleide ladderpositie (FR-3.3 / FR-4.2).
+
+  @@index([regionId, isActive, currentRating(sort: Desc)], map: "idx_duo_region_active_rating")
+  @@map("duo")
+}
+
+/// Een user kan meerdere rijen met left_at IS NULL hebben (multi-duo
+/// lidmaatschap, FR-1.4). Het maximum wordt afgedwongen via de trigger
+/// in de raw-SQL migratie, niet via een unique index.
+model DuoMembership {
+  id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  duoId    String    @map("duo_id") @db.Uuid
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  user User @relation(fields: [userId], references: [id])
+  duo  Duo  @relation(fields: [duoId], references: [id])
+
+  @@index([duoId], map: "idx_duo_membership_duo")
+  @@map("duo_membership")
+}
+
+/// Fase 3-toevoeging (zie CLAUDE.md/sprint-review): een voorstel om samen
+/// een duo te vormen. Bestaat volledig los van de duo-tabel; pas bij
+/// acceptatie wordt een echte Duo + 2 DuoMembership-rijen aangemaakt
+/// (US-B2). invitationPairKey is analoog aan Duo.memberPairKey en
+/// voorkomt dubbele gelijktijdige pending-voorstellen tussen hetzelfde
+/// koppel (partial unique index, zie raw-SQL migratie).
+model DuoInvitation {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  duoName           String              @map("duo_name") @db.VarChar(100)
+  regionId          String              @map("region_id") @db.Uuid
+  proposedByUserId  String              @map("proposed_by_user_id") @db.Uuid
+  invitedUserId     String              @map("invited_user_id") @db.Uuid
+  invitationPairKey String              @map("invitation_pair_key") @db.VarChar(150)
+  status            DuoInvitationStatus @default(PENDING)
+  resultingDuoId    String?             @unique @map("resulting_duo_id") @db.Uuid
+  createdAt         DateTime            @default(now()) @map("created_at")
+  respondedAt       DateTime?           @map("responded_at")
+
+  region       Region @relation(fields: [regionId], references: [id])
+  proposedBy   User   @relation("DuoInvitationProposedBy", fields: [proposedByUserId], references: [id])
+  invitedUser  User   @relation("DuoInvitationInvitedUser", fields: [invitedUserId], references: [id])
+  resultingDuo Duo?   @relation(fields: [resultingDuoId], references: [id])
+
+  // chk_duo_invitation_not_self (proposed_by_user_id <> invited_user_id)
+  // en de partial unique index op invitation_pair_key (WHERE status =
+  // 'pending') staan als raw SQL in de migratie — zelfde reden als bij
+  // Duo.memberPairKey.
+
+  @@index([invitedUserId, status], map: "idx_duo_invitation_invited_status")
+  @@index([proposedByUserId, status], map: "idx_duo_invitation_proposer_status")
+  @@map("duo_invitation")
+}
+
+model Challenge {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  challengerDuoId  String          @map("challenger_duo_id") @db.Uuid
+  challengedDuoId  String          @map("challenged_duo_id") @db.Uuid
+  status           ChallengeStatus @default(PENDING)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  responseDeadline DateTime        @map("response_deadline")
+  respondedAt      DateTime?       @map("responded_at")
+  acceptedAt       DateTime?       @map("accepted_at")
+  matchDeadline    DateTime?       @map("match_deadline")
+
+  challengerDuo Duo             @relation("ChallengeChallenger", fields: [challengerDuoId], references: [id])
+  challengedDuo Duo             @relation("ChallengeChallenged", fields: [challengedDuoId], references: [id])
+  match         Match?
+  dispute       Dispute?
+  ratingHistory RatingHistory[]
+
+  // FR-4.2: tier-restrictie wordt in de service-laag gevalideerd met de
+  // ratings van beide duo's op aanmaakmoment, niet als DB-constraint.
+
+  @@index([challengerDuoId, status], map: "idx_challenge_challenger_status")
+  @@index([challengedDuoId, status], map: "idx_challenge_challenged_status")
+  @@map("challenge")
+}
+
+model Match {
+  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  challengeId         String      @unique @map("challenge_id") @db.Uuid
+  scoreRaw            String      @map("score_raw") @db.VarChar(50)
+  status              MatchStatus @default(AWAITING_CONFIRMATION)
+  submittedBy         String      @map("submitted_by") @db.Uuid
+  confirmedBy         String?     @map("confirmed_by") @db.Uuid
+  submittedAt         DateTime    @default(now()) @map("submitted_at")
+  confirmedAt         DateTime?   @map("confirmed_at")
+  autoConfirmDeadline DateTime    @map("auto_confirm_deadline")
+  idempotencyKey      String?     @unique @map("idempotency_key") @db.VarChar(100)
+
+  challenge       Challenge       @relation(fields: [challengeId], references: [id])
+  submittedByUser User            @relation("MatchSubmittedBy", fields: [submittedBy], references: [id])
+  confirmedByUser User?           @relation("MatchConfirmedBy", fields: [confirmedBy], references: [id])
+  ratingHistory   RatingHistory[]
+  dispute         Dispute?
+
+  @@index([status], map: "idx_match_status")
+  @@map("match")
+}
+
+/// is_forfeit onderscheidt een echte wedstrijduitslag van een vaste
+/// forfeit-penalty (FR-6.5). Precies één van match_id/challenge_id is
+/// gevuld (chk_rating_history_source, zie raw-SQL migratie).
+model RatingHistory {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  duoId        String   @map("duo_id") @db.Uuid
+  matchId      String?  @map("match_id") @db.Uuid
+  challengeId  String?  @map("challenge_id") @db.Uuid
+  ratingBefore Int      @map("rating_before")
+  ratingAfter  Int      @map("rating_after")
+  kFactor      Int?     @map("k_factor")
+  isForfeit    Boolean  @default(false) @map("is_forfeit")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  duo       Duo        @relation(fields: [duoId], references: [id])
+  match     Match?     @relation(fields: [matchId], references: [id])
+  challenge Challenge? @relation(fields: [challengeId], references: [id])
+
+  // Plain composite @@unique i.p.v. partial index: in Postgres slaat een
+  // unique constraint NULL-waarden altijd over (NULL <> NULL), dus dit
+  // gedraagt zich identiek aan de "WHERE match_id/challenge_id IS NOT
+  // NULL"-partial-indexen uit Database_Schema.sql, zonder raw SQL nodig
+  // te hebben.
+  @@unique([duoId, matchId], map: "idx_rating_history_duo_match")
+  @@unique([duoId, challengeId], map: "idx_rating_history_duo_challenge")
+  @@index([duoId, createdAt(sort: Desc)], map: "idx_rating_history_duo")
+  @@map("rating_history")
+}
+
+/// Gekoppeld aan een Match (score-geschil) OF aan een Challenge
+/// (forfeit-geschil bij unplayed_timeout/expired), nooit beide
+/// (chk_dispute_source, zie raw-SQL migratie).
+model Dispute {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId     String?        @unique @map("match_id") @db.Uuid
+  challengeId String?        @unique @map("challenge_id") @db.Uuid
+  subject     DisputeSubject
+  raisedBy    String         @map("raised_by") @db.Uuid
+  reason      String
+  status      DisputeStatus  @default(OPEN)
+  resolvedBy  String?        @map("resolved_by") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at")
+  resolvedAt  DateTime?      @map("resolved_at")
+
+  match          Match?     @relation(fields: [matchId], references: [id])
+  challenge      Challenge? @relation(fields: [challengeId], references: [id])
+  raisedByUser   User       @relation("DisputeRaisedBy", fields: [raisedBy], references: [id])
+  resolvedByUser User?      @relation("DisputeResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@index([status], map: "idx_dispute_status")
+  @@map("dispute")
+}
+
+model DuoAvailability {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  duoId     String   @map("duo_id") @db.Uuid
+  dayOfWeek Int      @map("day_of_week") @db.SmallInt
+  startTime DateTime @map("start_time") @db.Time
+  endTime   DateTime @map("end_time") @db.Time
+  recurring Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  duo Duo @relation(fields: [duoId], references: [id])
+
+  @@index([duoId], map: "idx_duo_availability_duo")
+  @@index([dayOfWeek], map: "idx_duo_availability_day")
+  @@map("duo_availability")
+}
+
+model ApiClient {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String    @db.VarChar(150)
+  apiKeyHash String    @unique @map("api_key_hash") @db.VarChar(255)
+  regionId   String?   @map("region_id") @db.Uuid
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  region Region? @relation(fields: [regionId], references: [id])
+
+  @@index([isActive], map: "idx_api_client_active")
+  @@map("api_client")
+}
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    String   @map("entity_id") @db.Uuid
+  action      String   @db.VarChar(50)
+  performedBy String?  @map("performed_by") @db.Uuid
+  payload     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  performedByUser User? @relation(fields: [performedBy], references: [id])
+
+  @@index([entityType, entityId], map: "idx_audit_log_entity")
+  @@map("audit_log")
+}

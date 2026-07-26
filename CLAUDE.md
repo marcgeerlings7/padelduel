@@ -38,8 +38,12 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   Claude_Code_Bouwplan.md §8) en wacht op akkoord.
 
 ## Sprint-status (bijwerken na elke afgeronde sprint)
-- Sprint 1 (Auth, multi-duo, ladder): nog niet gestart
-- Sprint 2 (Challenges met rank-tiers): nog niet gestart
+- Sprint 1 (Auth, multi-duo, ladder) + ELO-prep: afgerond op 2026-07-26, akkoord PO.
+  Zie /docs/Technical_Debt.md voor openstaande risico's/aannames/technical debt.
+  Schema-aanvullingen t.o.v. Database_Schema.sql: tabel `duo_invitation`,
+  kolom `duo.dissolution_requested_by_user_id` (beide in overleg/gemeld).
+- Sprint 2 (Challenges met rank-tiers): functioneel compleet, wacht op
+  sprint-review-akkoord PO (zie /docs/Technical_Debt.md "Na Sprint 2").
 - Sprint 3 (Matches, ELO, speelverplichting): nog niet gestart
 - Sprint 4 (Disputes): nog niet gestart
 - Sprint 5 (Beschikbaarheid & externe API): nog niet gestart

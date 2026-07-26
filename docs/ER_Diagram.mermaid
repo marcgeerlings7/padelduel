@@ -1,0 +1,118 @@
+erDiagram
+    USER ||--o{ DUO_MEMBERSHIP : "heeft (meerdere tegelijk mogelijk)"
+    DUO ||--o{ DUO_MEMBERSHIP : "bestaat uit"
+    REGION ||--o{ DUO : "bevat"
+    DUO ||--o{ CHALLENGE : "daagt uit (challenger)"
+    DUO ||--o{ CHALLENGE : "ontvangt (challenged)"
+    CHALLENGE ||--o| MATCH : "resulteert in"
+    CHALLENGE ||--o| DISPUTE : "kan forfeit-dispute hebben"
+    MATCH ||--o{ RATING_HISTORY : "genereert"
+    MATCH ||--o| DISPUTE : "kan hebben"
+    DUO ||--o{ RATING_HISTORY : "heeft geschiedenis (incl. forfeits)"
+    DUO ||--o{ DUO_AVAILABILITY : "geeft door"
+    USER ||--o{ MATCH : "dient score in / bevestigt"
+    USER ||--o{ DISPUTE : "meldt / behandelt"
+    REGION ||--o{ API_CLIENT : "scope voor"
+
+    USER {
+        uuid id PK
+        string email
+        string password_hash
+        string role
+        boolean is_active
+        timestamp created_at
+    }
+
+    DUO_MEMBERSHIP {
+        uuid id PK
+        uuid user_id FK
+        uuid duo_id FK
+        timestamp joined_at
+        timestamp left_at
+    }
+
+    DUO {
+        uuid id PK
+        string name
+        uuid region_id FK
+        string member_pair_key
+        boolean is_active
+        int current_rating
+        int matches_played
+        timestamp dissolution_requested_at
+        timestamp dissolved_at
+        timestamp created_at
+    }
+
+    REGION {
+        uuid id PK
+        string name
+        string slug
+    }
+
+    CHALLENGE {
+        uuid id PK
+        uuid challenger_duo_id FK
+        uuid challenged_duo_id FK
+        string status
+        timestamp created_at
+        timestamp response_deadline
+        timestamp responded_at
+        timestamp accepted_at
+        timestamp match_deadline
+    }
+
+    MATCH {
+        uuid id PK
+        uuid challenge_id FK
+        string score_raw
+        string status
+        uuid submitted_by FK
+        uuid confirmed_by FK
+        timestamp submitted_at
+        timestamp confirmed_at
+        timestamp auto_confirm_deadline
+    }
+
+    RATING_HISTORY {
+        uuid id PK
+        uuid duo_id FK
+        uuid match_id FK
+        uuid challenge_id FK
+        int rating_before
+        int rating_after
+        int k_factor
+        boolean is_forfeit
+        timestamp created_at
+    }
+
+    DISPUTE {
+        uuid id PK
+        uuid match_id FK
+        uuid challenge_id FK
+        uuid raised_by FK
+        string reason
+        string status
+        uuid resolved_by FK
+        timestamp created_at
+        timestamp resolved_at
+    }
+
+    DUO_AVAILABILITY {
+        uuid id PK
+        uuid duo_id FK
+        int day_of_week
+        time start_time
+        time end_time
+        boolean recurring
+        timestamp created_at
+    }
+
+    API_CLIENT {
+        uuid id PK
+        string name
+        string api_key_hash
+        uuid region_id FK
+        boolean is_active
+        timestamp created_at
+    }
