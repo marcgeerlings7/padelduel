@@ -42,10 +42,7 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 **Mogelijke oplossing:** Prisma upgraden (5.22 → 7.x is beschikbaar) als dit ooit hindert.
 
 ### Geen permanente e2e-testsuite
-**Wat:** Playwright is toegevoegd als dev-dependency en gebruikt voor eenmalige, handmatige browser-verificatie tijdens Fase 4; er is geen blijvende e2e-suite in `tests/e2e` (die map is nog leeg).
-**Risico:** UI-regressies worden niet automatisch gedetecteerd.
-**Wanneer relevant:** Zodra de UI complexer wordt of vaker wijzigt.
-**Mogelijke oplossing:** De ad-hoc Playwright-scripts omzetten naar een blijvende suite in `tests/e2e`.
+**Opgelost:** na Sprint 3 (2026-07-29) — zie sectie "Playwright e2e-infrastructuur" hieronder.
 
 ### Aannames/interpretaties bij ontbrekende schemadetails (Fase 3)
 **Wat:** `docs/Database_Schema.sql` had geen ruimte voor een "voorstel, wacht op bevestiging"-status voor duo-vorming. In overleg opgelost met een nieuwe `duo_invitation`-tabel (jouw keuze) en een kleine kolomtoevoeging `duo.dissolution_requested_by_user_id` (mijn voorstel, expliciet gemeld). Ontbinding is geïnterpreteerd als een 2-staps request→confirm-flow; `dissolution_requested_at` wordt gezet bij de aanvraag, `dissolved_at`/`is_active=false` pas bij bevestiging door de andere speler.
@@ -78,3 +75,42 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 ### Forfeit-cooldown wordt afgeleid uit `RatingHistory`, niet uit een aparte kolom
 **Wat:** `isDuoInForfeitCooldown` in `challengeService.ts` bepaalt de cooldown door het meest recente `RatingHistory`-record met `is_forfeit=true` op te zoeken en `forfeit_cooldown_days` erbij op te tellen — zelfde patroon als de duo-dissolution-cooldown uit Sprint 1.
 **Risico:** Geen bekend risico; dit is een bewuste, consistente ontwerpkeuze om geen schema-uitbreiding nodig te hebben. Wel een extra query per cooldown-check — bij een grote `RatingHistory`-tabel is een index op `(duo_id, is_forfeit, created_at)` aan te raden (nu gedekt door de bestaande `idx_rating_history_duo`-index, die begint met `duo_id, created_at`, dus dit is al redelijk efficiënt).
+
+---
+
+## Na Sprint 3 (Matches, ELO-verwerking & Speelverplichting)
+
+### Score-formaat is een eigen invulling
+**Wat:** `score_raw` had in `Database_Schema.sql` nooit een voorgeschreven encoding (alleen `VARCHAR(50)`). Gekozen formaat: `"6-4,6-3[,10-8]"` (games per set, 2-3 sets, komma-gescheiden), geparst/gevalideerd in `src/lib/match/score.ts`.
+**Risico:** Laag — als er ooit een client (bijv. een losse mobiele app) buiten deze codebase om scores indient, moet die exact dit formaat aanhouden. Gedocumenteerd en volledig unit-getest (`tests/unit/match/score.test.ts`).
+
+### 2 nieuwe `platform_config`-rijen voor matchverwerking
+**Wat:** `match_auto_confirm_hours` (48) en `repeated_opponent_window_days` (14) toegevoegd via een data-migratie — geen schemawijziging, beide expliciet "configureerbaar" genoemd in `ELO_Algoritme.md`/Sprint3-doc maar nog niet eerder geseed.
+**Risico:** Geen.
+
+### Challenge krijgt status `completed` bij een voltooide match
+**Wat:** Naast de match zelf zet `finalizeMatch` ook `challenge.status = 'completed'` — dit staat al in het `challenge_status`-enum maar wordt niet expliciet genoemd in de Sprint3-AC's.
+**Waarom:** Zonder dit zou `hasActiveChallenge()` (Sprint 2) een duo voor altijd als "bezet" blijven beschouwen na een voltooide wedstrijd, waardoor het nooit meer een nieuwe challenge zou kunnen aangaan.
+**Risico:** Geen bekend risico; noodzakelijk voor correcte werking van Epic E.
+
+### "Achtergrondjobs" voor auto-confirm en unplayed-timeout zijn handmatig/extern te triggeren endpoints
+**Wat:** `POST /api/jobs/auto-confirm-matches` en `POST /api/jobs/expire-unplayed-challenges`, zelfde beveiligingsaanpak (gedeeld secret) als de challenge-expiratiejob uit Sprint 2.
+**Risico:** Zelfde als de Sprint 2-tech-debt hierboven: zonder een externe scheduler gebeurt dit nooit vanzelf. Alle drie de job-endpoints moeten samen ingepland worden vóór een pilot-rollout.
+
+### Percentiel-/herhaalde-tegenstander-berekening gebeurt buiten de schrijf-transactie
+**Wat:** `finalizeMatch` leest de ladder-positie (voor K-factor) en de matchhistorie (voor de herhaalde-tegenstander-demping) vóór de transactie start; alleen de daadwerkelijke schrijfacties (rating-update, RatingHistory, challenge-status) zitten in de transactie, beveiligd met een compare-and-swap guard.
+**Risico:** Laag — bij een zeer nauwe race (twee matches van dezelfde duo's binnen milliseconden afgerond) zou de K-factor/demping op licht verouderde data gebaseerd kunnen zijn. De correctheid van de rating-update zelf (geen dubbele verwerking, geen halve update) blijft gegarandeerd door de guard. Bij een grotere schaal kan dit strikter binnen de transactie getrokken worden.
+
+---
+
+## Infrastructuur (buiten sprint-scope, op verzoek toegevoegd na Sprint 3)
+
+### Codespace start nu automatisch op (devcontainer)
+**Wat:** `.devcontainer/devcontainer.json` (image `mcr.microsoft.com/devcontainers/universal:2`, hetzelfde default-image dat de Codespace al gebruikte) + `.devcontainer/start.sh` als `postStartCommand`: start/creëert de Postgres-container (nu mét volume, `padel-ladder-db-data`, zodat data een herstart overleeft — dit loste het probleem op dat eerder in deze sessie speelde), past migraties toe, seedt alleen als de dev-db leeg is, en start `npm run dev` op de achtergrond als die nog niet draait.
+**Let op:** dit bestand bestond nog niet; het treedt pas in werking bij de **volgende** Codespace-(her)start, niet met terugwerkende kracht op de huidige sessie.
+**Risico:** Geen bekend risico — idempotent, geverifieerd door het script handmatig te draaien.
+
+### Playwright e2e-infrastructuur
+**Wat:** `playwright.config.ts` + `tests/e2e/*.spec.ts` (ladder, duo-management, challenge-and-match). Draait tegen een **aparte database** (`padel_ladder_test`) op een **aparte poort** (3100), zodat `npm run test:e2e` nooit de dev-database/poort-3000-server aanraakt die de gebruiker zelf handmatig bekijkt. `npm run test:e2e` doet eerst een ECHTE reset (`prisma migrate reset --force --skip-seed`, niet alleen de idempotente seed-upsert) zodat leftover data van vorige runs nooit tests laat slagen/falen op de verkeerde gronden.
+**Belangrijke vondst tijdens het opzetten:** een echte race-condition-bug in `src/app/ladder/page.tsx` — de `useEffect` die bepaalde "namens welk duo uitdagen" had een onvolledige dependency-array, waardoor de uitdaagbare-duo-berekening kon vastlopen op een lege staat als de eigen-duo's-data vóór de ladder-data binnenkwam. Gefixt met `useMemo` + correcte dependencies. Dit is een voorbeeld van precies het soort regressie waar de e2e-suite voor bedoeld is.
+**Vervolg:** vanaf Sprint 4 wordt het toevoegen van e2e-tests voor nieuwe features onderdeel van de reguliere sprint-workflow, niet meer optioneel.

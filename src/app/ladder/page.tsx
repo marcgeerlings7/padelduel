@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
 
@@ -53,14 +53,21 @@ export default function LadderPage() {
       .catch(() => setError("Kon de ladder niet laden."));
   }, [selectedSlug]);
 
-  const myDuosInRegion = myDuos.filter(
-    (d) => ladder && ladder.length > 0 && regions.find((r) => r.slug === selectedSlug)?.id === d.regionId,
+  // useMemo (i.p.v. inline berekenen) zodat de effect hieronder correct
+  // opnieuw draait zodra ladder/regions/myDuos alsnog binnenkomen — met een
+  // plain const + deps [selectedSlug, myDuos.length] miste de effect een
+  // update wanneer myDuos vóór de ladder-data geladen werd (race condition).
+  const myDuosInRegion = useMemo(
+    () =>
+      myDuos.filter(
+        (d) => ladder && ladder.length > 0 && regions.find((r) => r.slug === selectedSlug)?.id === d.regionId,
+      ),
+    [myDuos, ladder, regions, selectedSlug],
   );
 
   useEffect(() => {
     setActingDuoId(myDuosInRegion[0]?.id ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSlug, myDuos.length]);
+  }, [myDuosInRegion]);
 
   useEffect(() => {
     if (!actingDuoId) {

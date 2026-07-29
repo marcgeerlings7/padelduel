@@ -30,6 +30,10 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
 ## Werkwijze
 - Schrijf eerst een kort plan (2-5 stappen) voordat je code genereert bij een nieuwe feature.
 - Schrijf unit tests voor alle pure business-logica (met name /src/lib/elo).
+- Vanaf Sprint 4: voeg voor elke nieuwe user-facing flow ook een Playwright
+  e2e-test toe in /tests/e2e (zie playwright.config.ts — draait tegen een
+  aparte database op poort 3100, nooit tegen de dev-omgeving op poort 3000).
+  `npm run test:e2e` reset die testdatabase eerst volledig.
 - Gebruik de bestaande Prisma-modellen; wijzig het schema alleen na expliciete instructie.
 - Volg per sprint het bijbehorende document (/docs/Sprint1_User_Stories.md t/m
   Sprint5_User_Stories.md) voor scope — bouw nooit vooruit op een latere sprint.
@@ -42,9 +46,10 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   Zie /docs/Technical_Debt.md voor openstaande risico's/aannames/technical debt.
   Schema-aanvullingen t.o.v. Database_Schema.sql: tabel `duo_invitation`,
   kolom `duo.dissolution_requested_by_user_id` (beide in overleg/gemeld).
-- Sprint 2 (Challenges met rank-tiers): functioneel compleet, wacht op
-  sprint-review-akkoord PO (zie /docs/Technical_Debt.md "Na Sprint 2").
-- Sprint 3 (Matches, ELO, speelverplichting): nog niet gestart
+- Sprint 2 (Challenges met rank-tiers): afgerond op 2026-07-26, akkoord PO.
+  Zie /docs/Technical_Debt.md ("Na Sprint 2") voor aannames/openstaande punten.
+- Sprint 3 (Matches, ELO, speelverplichting): functioneel compleet, wacht op
+  sprint-review-akkoord PO (zie /docs/Technical_Debt.md "Na Sprint 3").
 - Sprint 4 (Disputes): nog niet gestart
 - Sprint 5 (Beschikbaarheid & externe API): nog niet gestart
 

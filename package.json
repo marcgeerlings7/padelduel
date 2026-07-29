@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "dev:test": "dotenv -e .env.test -- next dev",
+    "db:test:reset": "dotenv -e .env.test -- npx prisma migrate reset --force --skip-seed && dotenv -e .env.test -- tsx scripts/seed.ts",
+    "test:e2e": "npm run db:test:reset && playwright test"
   },
   "prisma": {
     "seed": "tsx scripts/seed.ts"
@@ -22,12 +25,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^6.0.4",
     "bcryptjs": "^3.0.3",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "playwright": "^1.62.0",

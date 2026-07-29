@@ -110,12 +110,14 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <Link
-            href={`/duos/${card.duo.id}/challenges`}
-            className="mt-3 inline-block text-sm underline"
-          >
-            Challenges bekijken
-          </Link>
+          <div className="mt-3 flex gap-4">
+            <Link href={`/duos/${card.duo.id}/challenges`} className="text-sm underline">
+              Challenges bekijken
+            </Link>
+            <Link href={`/duos/${card.duo.id}/rating-history`} className="text-sm underline">
+              Ratinggeschiedenis
+            </Link>
+          </div>
         </section>
       ))}
 

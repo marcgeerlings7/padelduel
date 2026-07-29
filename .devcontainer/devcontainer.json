@@ -1,0 +1,19 @@
+{
+  "name": "Padel Ladder",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [3000, 5432],
+  "portsAttributes": {
+    "3000": {
+      "label": "Padel Ladder (dev)",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "Postgres (dev db)",
+      "onAutoForward": "silent"
+    }
+  },
+  "postStartCommand": "bash .devcontainer/start.sh"
+}
