@@ -6,11 +6,13 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
 
 type ChallengeDuo = { id: string; name: string };
+type DisputeSummary = { id: string; status: string };
 type MatchSummary = {
   id: string;
   status: string;
   scoreRaw: string;
   submittedBy: string;
+  dispute: DisputeSummary | null;
 };
 type Challenge = {
   id: string;
@@ -22,6 +24,7 @@ type Challenge = {
   responseDeadline: string;
   matchDeadline: string | null;
   match: MatchSummary | null;
+  dispute: DisputeSummary | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -133,6 +136,52 @@ function ScoreForm({ challengeId, onSubmitted }: { challengeId: string; onSubmit
   );
 }
 
+function DisputeForm({
+  submitPath,
+  onSubmitted,
+}: {
+  submitPath: string;
+  onSubmitted: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiFetch(submitPath, { method: "POST", body: JSON.stringify({ reason }) });
+      onSubmitted();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Er is iets misgegaan.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-2 text-sm">
+      <textarea
+        required
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Waarom betwist je dit?"
+        className="rounded-md border border-black/20 px-2 py-1 dark:border-white/30 dark:bg-transparent"
+      />
+      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+      <button
+        type="submit"
+        disabled={submitting}
+        className="self-start rounded-md border border-black/20 px-3 py-1 disabled:opacity-50 dark:border-white/30"
+      >
+        Dispute openen
+      </button>
+    </form>
+  );
+}
+
 export default function DuoChallengesPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -215,6 +264,8 @@ export default function DuoChallengesPage() {
           const canRespond = isChallengedDuo && c.status === "PENDING";
           const canSubmitScore = c.status === "ACCEPTED" && !c.match;
           const matchAwaitingConfirmation = c.match?.status === "AWAITING_CONFIRMATION";
+          const canOpenMatchDispute = c.match?.status === "DISPUTED" && !c.match.dispute;
+          const canOpenForfeitDispute = c.status === "UNPLAYED_TIMEOUT" && !c.dispute;
 
           return (
             <li
@@ -277,6 +328,22 @@ export default function DuoChallengesPage() {
               </div>
 
               {canSubmitScore && <ScoreForm challengeId={c.id} onSubmitted={reload} />}
+              {canOpenMatchDispute && (
+                <DisputeForm submitPath={`/api/matches/${c.match!.id}/disputes`} onSubmitted={reload} />
+              )}
+              {c.match?.dispute && (
+                <p className="text-black/50 dark:text-white/50">
+                  Dispute geopend — wordt beoordeeld door een admin.
+                </p>
+              )}
+              {canOpenForfeitDispute && (
+                <DisputeForm submitPath={`/api/challenges/${c.id}/disputes`} onSubmitted={reload} />
+              )}
+              {c.dispute && (
+                <p className="text-black/50 dark:text-white/50">
+                  Forfeit-dispute geopend — wordt beoordeeld door een admin.
+                </p>
+              )}
             </li>
           );
         })}

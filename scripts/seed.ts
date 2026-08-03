@@ -22,6 +22,7 @@ function seedId(category: number, index: number): string {
 const REGION_ID = seedId(0, 1);
 const userId = (n: number) => seedId(1, n);
 const duoId = (n: number) => seedId(2, n);
+const ADMIN_ID = seedId(3, 1);
 
 const DUO_NAMES = [
   "Smash Sisters",
@@ -84,6 +85,21 @@ async function main() {
     });
   }
 
+  // Admin-account (Epic G, Sprint 4) — nodig om de admin-disputeflows te
+  // kunnen testen/demonstreren; geen onderdeel van de reguliere 20 spelers.
+  await prisma.user.upsert({
+    where: { id: ADMIN_ID },
+    update: {},
+    create: {
+      id: ADMIN_ID,
+      email: "admin@example.com",
+      passwordHash,
+      role: "ADMIN",
+      isActive: true,
+      activatedAt: new Date(),
+    },
+  });
+
   const duoIds: string[] = [];
   for (let i = 0; i < DUO_MEMBERS.length; i++) {
     const id = duoId(i + 1);
@@ -123,7 +139,7 @@ async function main() {
     });
   }
 
-  console.log(`Seed klaar: 1 regio, 20 users, ${duoIds.length} actieve duo's.`);
+  console.log(`Seed klaar: 1 regio, 20 users, 1 admin, ${duoIds.length} actieve duo's.`);
 }
 
 main()

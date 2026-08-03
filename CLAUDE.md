@@ -48,9 +48,12 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   kolom `duo.dissolution_requested_by_user_id` (beide in overleg/gemeld).
 - Sprint 2 (Challenges met rank-tiers): afgerond op 2026-07-26, akkoord PO.
   Zie /docs/Technical_Debt.md ("Na Sprint 2") voor aannames/openstaande punten.
-- Sprint 3 (Matches, ELO, speelverplichting): functioneel compleet, wacht op
-  sprint-review-akkoord PO (zie /docs/Technical_Debt.md "Na Sprint 3").
-- Sprint 4 (Disputes): nog niet gestart
+- Sprint 3 (Matches, ELO, speelverplichting): afgerond op 2026-07-29, akkoord PO.
+  Zie /docs/Technical_Debt.md ("Na Sprint 3") voor aannames/openstaande punten.
+- Sprint 4 (Disputes): functioneel compleet, wacht op sprint-review-akkoord PO
+  (zie /docs/Technical_Debt.md "Na Sprint 4"). Schema-aanvulling t.o.v.
+  Database_Schema.sql: unieke index RatingHistory(duo_id, challenge_id)
+  vervangen door een gewone index (in overleg, nodig voor dispute-correcties).
 - Sprint 5 (Beschikbaarheid & externe API): nog niet gestart
 
 ## Wat NIET bouwen (zie PRD §4)

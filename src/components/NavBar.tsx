@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getStoredToken, clearStoredToken } from "@/lib/client/session";
+import { getStoredToken, getStoredRole, clearStoredToken } from "@/lib/client/session";
 
 export function NavBar() {
   const pathname = usePathname();
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Herevalueren bij elke client-side navigatie (bijv. login -> /dashboard),
   // anders blijft de nav de status van vóór het inloggen tonen totdat de
   // pagina hard herladen wordt.
   useEffect(() => {
     setLoggedIn(Boolean(getStoredToken()));
+    setIsAdmin(getStoredRole() === "ADMIN");
   }, [pathname]);
 
   return (
@@ -27,6 +29,11 @@ export function NavBar() {
       <Link href="/dashboard" className="hover:underline">
         Dashboard
       </Link>
+      {isAdmin && (
+        <Link href="/admin/disputes" className="hover:underline">
+          Admin
+        </Link>
+      )}
       <div className="ml-auto flex items-center gap-4">
         {loggedIn ? (
           <button

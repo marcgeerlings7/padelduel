@@ -240,7 +240,12 @@ export async function expireOverdueChallenges(): Promise<ExpireResult[]> {
 export async function listChallengesForDuo(duoId: string) {
   return prisma.challenge.findMany({
     where: { OR: [{ challengerDuoId: duoId }, { challengedDuoId: duoId }] },
-    include: { challengerDuo: true, challengedDuo: true, match: true },
+    include: {
+      challengerDuo: true,
+      challengedDuo: true,
+      match: { include: { dispute: true } },
+      dispute: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 }

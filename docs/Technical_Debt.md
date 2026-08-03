@@ -111,6 +111,27 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 **Risico:** Geen bekend risico — idempotent, geverifieerd door het script handmatig te draaien.
 
 ### Playwright e2e-infrastructuur
-**Wat:** `playwright.config.ts` + `tests/e2e/*.spec.ts` (ladder, duo-management, challenge-and-match). Draait tegen een **aparte database** (`padel_ladder_test`) op een **aparte poort** (3100), zodat `npm run test:e2e` nooit de dev-database/poort-3000-server aanraakt die de gebruiker zelf handmatig bekijkt. `npm run test:e2e` doet eerst een ECHTE reset (`prisma migrate reset --force --skip-seed`, niet alleen de idempotente seed-upsert) zodat leftover data van vorige runs nooit tests laat slagen/falen op de verkeerde gronden.
+**Wat:** `playwright.config.ts` + `tests/e2e/*.spec.ts` (ladder, duo-management, challenge-and-match, disputes). Draait tegen een **aparte database** (`padel_ladder_test`) op een **aparte poort** (3100), zodat `npm run test:e2e` nooit de dev-database/poort-3000-server aanraakt die de gebruiker zelf handmatig bekijkt. `npm run test:e2e` doet eerst een ECHTE reset (`prisma migrate reset --force --skip-seed`, niet alleen de idempotente seed-upsert) zodat leftover data van vorige runs nooit tests laat slagen/falen op de verkeerde gronden.
 **Belangrijke vondst tijdens het opzetten:** een echte race-condition-bug in `src/app/ladder/page.tsx` — de `useEffect` die bepaalde "namens welk duo uitdagen" had een onvolledige dependency-array, waardoor de uitdaagbare-duo-berekening kon vastlopen op een lege staat als de eigen-duo's-data vóór de ladder-data binnenkwam. Gefixt met `useMemo` + correcte dependencies. Dit is een voorbeeld van precies het soort regressie waar de e2e-suite voor bedoeld is.
 **Vervolg:** vanaf Sprint 4 wordt het toevoegen van e2e-tests voor nieuwe features onderdeel van de reguliere sprint-workflow, niet meer optioneel.
+**Kanttekening:** multi-actor e2e-tests (2-3 browsercontexten, meerdere rondes) kunnen de standaard 30s Playwright-testtimeout overschrijden door `next dev`'s on-demand compilatie — expliciet `test.setTimeout(60_000)` toegevoegd waar nodig (zie `04-disputes.spec.ts`). Geen productie-risico (productie-builds hebben geen compilatie-overhead per request), wel iets om aan te denken bij nieuwe multi-actor e2e-tests.
+
+---
+
+## Na Sprint 4 (Disputes)
+
+### RatingHistory(duo_id, challenge_id) is niet meer uniek (in overleg)
+**Wat:** de unieke index is vervangen door een gewone index — nodig omdat een `resolved_overturned` forfeit-dispute een NIEUW, gekoppeld correctie-record vereist náást het originele forfeit-record (auditability, US-G3), wat met de oorspronkelijke (in Fase 1 al zo aangelegde) unieke index onmogelijk was.
+**Risico:** Laag. Dit betekent wel dat een duo nu in theorie meerdere `RatingHistory`-rijen voor dezelfde challenge kan hebben (origineel + correctie(s)) — bij het optellen/weergeven van "totale impact van deze challenge" moet je dus over alle rijen sommeren, niet uitgaan van precies 1 rij per duo per challenge.
+
+### Voided match sluit de challenge blijvend af, zonder nieuwe score-poging
+**Wat:** bij `resolved_overturned` op een match-score-dispute wordt de match op `voided` gezet, maar de challenge zelf blijft op `accepted` staan. Omdat `match.challenge_id` uniek is, kan er nooit een nieuwe score voor diezelfde challenge ingediend worden — er is geen "opnieuw spelen"-pad.
+**Risico:** Laag/zeldzaam (disputes zijn een uitzondering), maar wel een échte doodlopende weg voor dat duo-paar totdat een nieuwe challenge wordt aangemaakt. Niet expliciet gevraagd in de Sprint4-AC's; bewust niet zelf een "heropen challenge"-flow verzonnen.
+
+### Admin-account alleen via seed-script
+**Wat:** `admin@example.com` wordt aangemaakt door `scripts/seed.ts`, er is geen UI/flow om een gebruiker tot admin te promoveren.
+**Risico:** Geen voor de pilotschaal — bij een echte rollout moet er een manier komen om (extra) admins aan te wijzen buiten het seed-script om.
+
+### Admin-link in de navigatiebalk leest de rol uit een ongeverifieerd JWT-payload
+**Wat:** `getStoredRole()` decodeert het JWT client-side zonder handtekeningverificatie, puur om de "Admin"-link wel/niet te tonen.
+**Risico:** Geen — dit is nooit de autorisatiegrens (elke admin-API-route controleert `user.role` server-side opnieuw via het geverifieerde token). Een gemanipuleerd client-side token zou hooguit een onterecht zichtbare link geven, niet toegang tot data.

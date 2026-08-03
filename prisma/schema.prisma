@@ -271,13 +271,15 @@ model RatingHistory {
   match     Match?     @relation(fields: [matchId], references: [id])
   challenge Challenge? @relation(fields: [challengeId], references: [id])
 
-  // Plain composite @@unique i.p.v. partial index: in Postgres slaat een
-  // unique constraint NULL-waarden altijd over (NULL <> NULL), dus dit
-  // gedraagt zich identiek aan de "WHERE match_id/challenge_id IS NOT
-  // NULL"-partial-indexen uit Database_Schema.sql, zonder raw SQL nodig
-  // te hebben.
+  // duoId+matchId blijft uniek: een match levert precies één rating-record
+  // per duo op (nooit een correctie nodig, zie ELO_Algoritme.md/US-F4).
   @@unique([duoId, matchId], map: "idx_rating_history_duo_match")
-  @@unique([duoId, challengeId], map: "idx_rating_history_duo_challenge")
+  // duoId+challengeId is bewust NIET meer uniek (Sprint 4, in overleg):
+  // een resolved_overturned forfeit-dispute vereist een NIEUW, gekoppeld
+  // correctie-record náást het origineel (auditability, US-G3) — het
+  // origineel mag nooit overschreven worden. Een unieke index zou dat
+  // tweede record onmogelijk maken.
+  @@index([duoId, challengeId], map: "idx_rating_history_duo_challenge")
   @@index([duoId, createdAt(sort: Desc)], map: "idx_rating_history_duo")
   @@map("rating_history")
 }

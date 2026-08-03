@@ -159,14 +159,24 @@ export type FinalizeResult = { alreadyProcessed: boolean };
  * bevestiging als de auto-confirm-achtergrondjob (US-F3: "triggert
  * vervolgens dezelfde ELO-verwerking als een handmatige bevestiging").
  * Idempotent via een compare-and-swap update binnen de transactie (WHERE
- * status = AWAITING_CONFIRMATION), analoog aan challengeService.
+ * status IN fromStatuses), analoog aan challengeService.
+ *
+ * Ook hergebruikt door disputeService bij een `resolved_upheld`
+ * match-score-dispute (Sprint 4, US-G3) — daar is de match-status
+ * DISPUTED i.p.v. AWAITING_CONFIRMATION, vandaar de configureerbare
+ * `fromStatuses`.
  */
-async function finalizeMatch(
+export async function finalizeMatch(
   matchId: string,
-  options: { confirmedBy: string | null; isAutoConfirm: boolean },
+  options: {
+    confirmedBy: string | null;
+    isAutoConfirm: boolean;
+    fromStatuses?: Array<"AWAITING_CONFIRMATION" | "DISPUTED">;
+  },
 ): Promise<FinalizeResult> {
+  const fromStatuses = options.fromStatuses ?? ["AWAITING_CONFIRMATION"];
   const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
-  if (match.status !== "AWAITING_CONFIRMATION") {
+  if (!fromStatuses.includes(match.status as "AWAITING_CONFIRMATION" | "DISPUTED")) {
     return { alreadyProcessed: true };
   }
 
@@ -212,7 +222,7 @@ async function finalizeMatch(
 
   return prisma.$transaction(async (tx) => {
     const guard = await tx.match.updateMany({
-      where: { id: matchId, status: "AWAITING_CONFIRMATION" },
+      where: { id: matchId, status: { in: fromStatuses } },
       data: { status: "COMPLETED", confirmedBy: options.confirmedBy, confirmedAt: new Date() },
     });
     if (guard.count === 0) {
