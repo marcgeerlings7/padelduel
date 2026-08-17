@@ -46,3 +46,23 @@ if ! pgrep -f "next dev" >/dev/null; then
   nohup npm run dev > /tmp/padel-ladder-dev.log 2>&1 &
   disown
 fi
+
+# --- 5. Vercel CLI: installeren (idempotent) + inlog-status checken ---
+# `vercel login` opent een echte browser-popup/magic-link-flow en vraagt
+# interactief om invoer (e-mailadres of auth-provider-keuze) — dat kan
+# niet betrouwbaar automatisch/non-interactief vanuit postStartCommand
+# gedaan worden (geen gekoppelde TTY). We zorgen daarom alleen dat de CLI
+# er sowieso staat, en laten duidelijk zien of er nog ingelogd moet
+# worden — dat login-popup-moment doet de gebruiker zelf, één keer, in
+# een terminal.
+if ! command -v vercel >/dev/null 2>&1; then
+  npm install -g vercel >/dev/null 2>&1
+fi
+
+if command -v vercel >/dev/null 2>&1; then
+  if vercel whoami >/dev/null 2>&1; then
+    echo "[vercel] ingelogd als $(vercel whoami 2>/dev/null)"
+  else
+    echo "[vercel] nog niet ingelogd — draai 'vercel login' in een terminal om in te loggen (opent een browser-popup)."
+  fi
+fi
