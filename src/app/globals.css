@@ -2,26 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Kleine, pagina-brede overrides bovenop design-system.css — zelfde als
+   het <style>-blok in de oorspronkelijke Modernist-mockup. */
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
 }
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+a {
+  color: var(--color-accent-700);
+  text-decoration: underline;
+}
+a:hover {
+  color: var(--color-accent);
+}
+.tag {
+  white-space: nowrap;
 }

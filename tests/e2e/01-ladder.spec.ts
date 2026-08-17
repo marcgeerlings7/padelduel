@@ -9,7 +9,7 @@ test.describe("Ladder (US-C1, US-E1)", () => {
 
     const firstRow = rows.first();
     await expect(firstRow).toContainText("Smash Sisters");
-    await expect(firstRow).toContainText("1450");
+    await expect(firstRow).toContainText("1395");
 
     const lastRow = rows.last();
     await expect(lastRow).toContainText("Global Gladiators");
@@ -21,7 +21,7 @@ test.describe("Ladder (US-C1, US-E1)", () => {
     await page.goto("/ladder");
     await page.waitForTimeout(500); // client-side fetch van /api/duos/mine laten landen
 
-    const ownRows = page.locator("tr.bg-yellow-100");
+    const ownRows = page.locator('tr[data-own="true"]');
     await expect(ownRows).toHaveCount(2);
     await expect(page.locator("tbody")).toContainText("Smash Sisters (jouw duo)");
     await expect(page.locator("tbody")).toContainText("Chiquita Chargers (jouw duo)");

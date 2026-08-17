@@ -63,58 +63,53 @@ export default function ProposeDuoPage() {
 
   return (
     <main className="mx-auto flex max-w-sm flex-col gap-6 px-4 py-8 sm:px-8">
-      <h1 className="text-xl font-bold">Duo voorstellen</h1>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
-          Regio
-          <select
-            value={regionSlug}
-            onChange={(e) => setRegionSlug(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
-          >
+      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: 0 }}>
+        Duo voorstellen
+      </h1>
+      <div className="hr" style={{ margin: 0 }} />
+      <form onSubmit={handleSubmit}>
+        <div className="field" style={{ marginBottom: 16 }}>
+          <label>Regio</label>
+          <select className="input" value={regionSlug} onChange={(e) => setRegionSlug(e.target.value)}>
             {regions.map((region) => (
               <option key={region.id} value={region.slug}>
                 {region.name}
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          E-mailadres van je partner
+        </div>
+        <div className="field" style={{ marginBottom: 16 }}>
+          <label>E-mailadres van je partner</label>
           <input
+            className="input"
             type="email"
             required
             value={invitedEmail}
             onChange={(e) => setInvitedEmail(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Duo-naam (optioneel)
+        </div>
+        <div className="field" style={{ marginBottom: 24 }}>
+          <label>Duo-naam (optioneel)</label>
           <div className="flex gap-2">
             <input
+              className="input"
               type="text"
               value={duoName}
               onChange={(e) => setDuoName(e.target.value)}
               placeholder="Laat leeg om er één te laten verzinnen"
-              className="w-full rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
             />
-            <button
-              type="button"
-              onClick={handleSuggestName}
-              className="shrink-0 rounded-md border border-black/20 px-3 py-2 text-sm dark:border-white/30"
-            >
+            <button type="button" onClick={handleSuggestName} className="btn btn-secondary" style={{ flexShrink: 0 }}>
               🎲 Verzin
             </button>
           </div>
-        </label>
-        {message && <p className="text-sm text-green-700 dark:text-green-400">{message}</p>}
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-        >
+        </div>
+        {message && (
+          <p style={{ fontSize: 13, color: "var(--color-text)", fontWeight: 700, marginBottom: 16 }}>
+            {message}
+          </p>
+        )}
+        {error && <p style={{ fontSize: 13, color: "var(--color-accent-700)", marginBottom: 16 }}>{error}</p>}
+        <button type="submit" disabled={submitting} className="btn btn-primary btn-block">
           {submitting ? "Bezig..." : "Voorstel versturen"}
         </button>
       </form>

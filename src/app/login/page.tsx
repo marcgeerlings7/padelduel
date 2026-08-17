@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/client/api";
-import { setStoredToken } from "@/lib/client/session";
+import { getStoredToken, setStoredToken } from "@/lib/client/session";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +13,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (getStoredToken()) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,38 +39,68 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col gap-6 px-4 py-12 sm:px-8">
-      <h1 className="text-xl font-bold">Inloggen</h1>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
-          E-mailadres
+    <AuthLayout>
+      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 8px" }}>
+        Inloggen
+      </h1>
+      <p style={{ margin: "0 0 28px", color: "var(--color-neutral-700)", fontSize: 14 }}>
+        Nog geen account? <Link href="/register">Account aanmaken</Link>.
+      </p>
+      <form onSubmit={handleSubmit}>
+        <div className="field" style={{ marginBottom: 16 }}>
+          <label>E-mailadres</label>
           <input
+            className="input"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
+            placeholder="jij@padel.nl"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Wachtwoord
+        </div>
+        <div className="field" style={{ marginBottom: 24 }}>
+          <label>Wachtwoord</label>
           <input
+            className="input"
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
+            placeholder="••••••••"
           />
-        </label>
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-        >
+        </div>
+        {error && <p style={{ color: "var(--color-accent-700)", fontSize: 13, marginBottom: 16 }}>{error}</p>}
+        <button type="submit" disabled={submitting} className="btn btn-primary btn-block">
           {submitting ? "Bezig..." : "Inloggen"}
         </button>
       </form>
-    </main>
+
+      <div
+        className="card"
+        style={{ borderRadius: 0, marginTop: 16, padding: "12px 16px", background: "var(--color-neutral-100)" }}
+      >
+        <p
+          style={{
+            margin: "0 0 4px",
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--color-neutral-600)",
+          }}
+        >
+          Testaccount
+        </p>
+        <p style={{ margin: 0, fontSize: 13 }}>
+          user1@example.com / <code>PadelTest123!</code>
+        </p>
+      </div>
+
+      <div className="hr" style={{ margin: "28px 0" }} />
+      <div className="flex flex-wrap gap-2">
+        <span className="tag tag-neutral">Multi-duo ondersteund</span>
+        <span className="tag tag-outline">ELO-rating</span>
+      </div>
+    </AuthLayout>
   );
 }

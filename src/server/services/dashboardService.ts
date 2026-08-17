@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getTier } from "@/lib/elo";
 import { getLadder, LadderEntry } from "@/server/services/ladderService";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
 
@@ -11,6 +12,8 @@ export type DashboardDuoCard = {
     currentRating: number;
     position: number;
     ladderSize: number;
+    tier: number;
+    partnerEmail: string | null;
   };
   above: LadderEntry[];
   below: LadderEntry[];
@@ -32,7 +35,10 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
     orderBy: { joinedAt: "asc" },
   });
 
-  const maxActiveDuos = await getConfigNumber("max_active_duos_per_user");
+  const [maxActiveDuos, tierSize] = await Promise.all([
+    getConfigNumber("max_active_duos_per_user"),
+    getConfigNumber("rating_tier_size"),
+  ]);
 
   // Eén ladder-query per regio, ook als de gebruiker meerdere duo's in
   // dezelfde regio heeft.
@@ -53,6 +59,11 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
     const below =
       ownIndex >= 0 ? ladder.slice(ownIndex + 1, ownIndex + 1 + NEARBY_COUNT) : [];
 
+    const partnerMembership = await prisma.duoMembership.findFirst({
+      where: { duoId: duo.id, userId: { not: userId }, leftAt: null },
+      include: { user: true },
+    });
+
     cards.push({
       duo: {
         id: duo.id,
@@ -62,6 +73,8 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
         currentRating: duo.currentRating,
         position,
         ladderSize: ladder.length,
+        tier: getTier(duo.currentRating, tierSize),
+        partnerEmail: partnerMembership?.user.email ?? null,
       },
       above,
       below,

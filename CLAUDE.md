@@ -50,11 +50,14 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   Zie /docs/Technical_Debt.md ("Na Sprint 2") voor aannames/openstaande punten.
 - Sprint 3 (Matches, ELO, speelverplichting): afgerond op 2026-07-29, akkoord PO.
   Zie /docs/Technical_Debt.md ("Na Sprint 3") voor aannames/openstaande punten.
-- Sprint 4 (Disputes): functioneel compleet, wacht op sprint-review-akkoord PO
-  (zie /docs/Technical_Debt.md "Na Sprint 4"). Schema-aanvulling t.o.v.
-  Database_Schema.sql: unieke index RatingHistory(duo_id, challenge_id)
-  vervangen door een gewone index (in overleg, nodig voor dispute-correcties).
-- Sprint 5 (Beschikbaarheid & externe API): nog niet gestart
+- Sprint 4 (Disputes): afgerond op 2026-08-03, akkoord PO.
+  Zie /docs/Technical_Debt.md ("Na Sprint 4") voor aannames/openstaande punten.
+  Schema-aanvulling t.o.v. Database_Schema.sql: unieke index
+  RatingHistory(duo_id, challenge_id) vervangen door een gewone index
+  (in overleg, nodig voor dispute-correcties).
+- Sprint 5 (Beschikbaarheid & externe API): functioneel compleet, wacht op
+  sprint-review-akkoord PO (zie /docs/Technical_Debt.md "Na Sprint 5").
+  Na akkoord is de volledige v1-scope (Sprint 1–5) compleet.
 
 ## Wat NIET bouwen (zie PRD §4)
 Chat, social feed, club-administratie, fysieke baanreservering/boeking, advertenties.

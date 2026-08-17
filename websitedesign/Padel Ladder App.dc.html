@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/modernist-3cce4643-0f58-4d30-a7c3-f03b7fdeee02/styles.css">
+  <script src="_ds/modernist-3cce4643-0f58-4d30-a7c3-f03b7fdeee02/_ds_bundle.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    a { color: var(--color-accent-700); text-decoration: underline; }
+    .tag { white-space: nowrap; flex-shrink: 0; }
+    a:hover { color: var(--color-accent); }
+    body { margin: 0; background: var(--color-bg); }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="min-height:100vh; background:var(--color-bg); font-family:var(--font-body); color:var(--color-text);">
+
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid; grid-template-columns: minmax(280px,1fr) minmax(320px,1.2fr); min-height:100vh;">
+      <div style="background:var(--color-text); color:var(--color-bg); padding:clamp(32px,6vw,80px); display:flex; flex-direction:column; justify-content:space-between; border-right:2px solid var(--color-divider);">
+        <div style="font-family:var(--font-heading); font-weight:800; font-size:20px; letter-spacing:0.04em;">PADEL LADDER</div>
+        <div>
+          <div style="font-family:var(--font-heading); font-weight:800; font-size:clamp(36px,6vw,72px); line-height:0.95; text-transform:uppercase;">Klim de<br>ladder.</div>
+          <p style="font-size:clamp(15px,1.6vw,18px); max-width:32ch; margin-top:16px; opacity:0.85;">Daag duo's uit binnen jouw tier. Speel de wedstrijd. Zie je rating stijgen.</p>
+        </div>
+        <div style="font-size:13px; opacity:0.6;">Seizoen 2026 &mdash; Tier 1 t/m 6</div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:center; padding:clamp(24px,5vw,64px);">
+        <div style="width:100%; max-width:380px;">
+          <h1 style="font-family:var(--font-heading); font-weight:800; font-size:28px; margin:0 0 8px;">Inloggen</h1>
+          <p style="margin:0 0 28px; color:var(--color-neutral-700); font-size:14px;">Nog geen account? <a href="#" onClick="{{ goSignup }}">Duo aanmaken</a></p>
+          <div class="field" style="margin-bottom:16px;">
+            <label>E-mailadres</label>
+            <input class="input" type="email" placeholder="jij@padel.nl">
+          </div>
+          <div class="field" style="margin-bottom:24px;">
+            <label>Wachtwoord</label>
+            <input class="input" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;">
+          </div>
+          <button class="btn btn-primary btn-block" onClick="{{ login }}">Inloggen</button>
+          <div class="hr" style="margin:28px 0;"></div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <span class="tag tag-neutral">Multi-duo ondersteund</span>
+            <span class="tag tag-outline">ELO-rating</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ !isLogin }}" hint-placeholder-val="{{ true }}">
+    <div>
+      <nav class="nav" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:0 clamp(16px,3vw,32px);">
+        <div class="nav-brand" onClick="{{ goLogin }}" style="cursor:pointer;">PADEL LADDER</div>
+        <div style="display:flex; gap:4px; flex-wrap:wrap; overflow-x:auto;">
+          <sc-for list="{{ navTabs }}" as="tab" hint-placeholder-count="8">
+            <button
+              onClick="{{ tab.onClick }}"
+              style="border:none; background:none; cursor:pointer; padding:20px 14px; font-family:var(--font-heading); font-weight:700; font-size:13px; letter-spacing:0.02em; white-space:nowrap; color:{{ tab.color }}; border-bottom:{{ tab.border }};"
+            >{{ tab.label }}</button>
+          </sc-for>
+        </div>
+        <div class="seg" style="flex-shrink:0;">
+          <button class="seg-opt" data-active="{{ isPlayerRole }}" onClick="{{ setRolePlayer }}">Speler</button>
+          <button class="seg-opt" data-active="{{ isAdminRole }}" onClick="{{ setRoleAdmin }}">Beheerder</button>
+        </div>
+      </nav>
+
+      <main style="padding:clamp(20px,4vw,48px); max-width:1280px; margin:0 auto;">
+
+        <sc-if value="{{ screenIs.ladder }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:24px;">
+              <div>
+                <div class="tag tag-accent" style="margin-bottom:10px;">Seizoen 2026</div>
+                <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0;">Ladder</h1>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <span class="tag tag-outline">6 tiers &middot; 200 pt / tier</span>
+              </div>
+            </div>
+            <div class="hr" style="margin-bottom:8px;"></div>
+            <div style="overflow-x:auto;">
+              <table class="table" style="min-width:640px;">
+                <thead>
+                  <tr><th>#</th><th>Duo</th><th>Tier</th><th>Rating</th><th>W-L</th><th>Streak</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{ ladderRows }}" as="row" hint-placeholder-count="8">
+                    <tr>
+                      <td style="font-family:var(--font-heading); font-weight:800;">{{ row.rank }}</td>
+                      <td>{{ row.name }}</td>
+                      <td><span class="tag {{ row.tierTagClass }}">Tier {{ row.tier }}</span></td>
+                      <td>{{ row.rating }}</td>
+                      <td>{{ row.record }}</td>
+                      <td>{{ row.streak }}</td>
+                      <td style="text-align:right;"><button class="btn btn-ghost" onClick="{{ goChallenges }}">Uitdagen</button></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.duos }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:24px;">
+              <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0;">Mijn duo's</h1>
+              <button class="btn btn-primary">+ Nieuw duo</button>
+            </div>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px;">Je kunt lid zijn van meerdere actieve duo's tegelijk, tot het teammaximum van dit seizoen (3).</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:2px; background:var(--color-divider); margin-bottom:40px;">
+              <sc-for list="{{ myDuos }}" as="duo" hint-placeholder-count="3">
+                <div class="card" style="border-radius:0;">
+                  <div class="card-kicker">Tier {{ duo.tier }} &middot; #{{ duo.rank }}</div>
+                  <div class="card-title">{{ duo.name }}</div>
+                  <div class="card-body">Met {{ duo.partner }} &middot; rating {{ duo.rating }}</div>
+                  <div class="card-meta" style="display:flex; gap:8px; margin-top:12px;">
+                    <span class="tag tag-neutral">{{ duo.record }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <h2 style="font-family:var(--font-heading); font-weight:800; font-size:20px; margin:0 0 16px;">Openstaande uitnodigingen</h2>
+            <div class="hr" style="margin-bottom:16px;"></div>
+            <sc-for list="{{ invitations }}" as="inv" hint-placeholder-count="2">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:16px 0; border-bottom:2px solid var(--color-divider);">
+                <div>
+                  <div style="font-weight:700;">{{ inv.from }}</div>
+                  <div style="font-size:13px; color:var(--color-neutral-700);">wil met jou het duo &ldquo;{{ inv.duoName }}&rdquo; vormen</div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-secondary">Weigeren</button>
+                  <button class="btn btn-primary">Accepteren</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.challenges }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0 0 8px;">Challenges</h1>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px;">Alleen duo's binnen jouw rank-tier zijn uitdaagbaar.</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <h2 style="font-family:var(--font-heading); font-weight:800; font-size:18px; margin:0 0 14px;">Uitdaagbaar &mdash; Tier 3</h2>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:2px; background:var(--color-divider); margin-bottom:36px;">
+              <sc-for list="{{ challengeable }}" as="c" hint-placeholder-count="4">
+                <div class="card" style="border-radius:0; display:flex; flex-direction:column; justify-content:space-between;">
+                  <div>
+                    <div class="card-kicker">#{{ c.rank }} &middot; rating {{ c.rating }}</div>
+                    <div class="card-title">{{ c.name }}</div>
+                  </div>
+                  <button class="btn btn-primary" style="margin-top:16px;">Uitdagen</button>
+                </div>
+              </sc-for>
+            </div>
+            <h2 style="font-family:var(--font-heading); font-weight:800; font-size:18px; margin:0 0 14px;">Actieve challenges</h2>
+            <sc-for list="{{ activeChallenges }}" as="ac" hint-placeholder-count="2">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:16px 0; border-bottom:2px solid var(--color-divider);">
+                <div>
+                  <div style="font-weight:700;">vs. {{ ac.opponent }}</div>
+                  <div style="font-size:13px; color:var(--color-neutral-700);">Deadline: {{ ac.deadline }} &middot; {{ ac.direction }}</div>
+                </div>
+                <span class="tag {{ ac.statusClass }}">{{ ac.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.match }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:560px;">
+            <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0 0 8px;">Uitslag invoeren</h1>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px;">Net Ninjas vs. Ace Republic &middot; speelverplichting vervalt over 2 dagen</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-bottom:12px; font-family:var(--font-heading); font-weight:800; font-size:13px; text-transform:uppercase;">
+              <div>Net Ninjas</div><div></div><div style="text-align:right;">Ace Republic</div>
+            </div>
+            <sc-for list="{{ sets }}" as="s" hint-placeholder-count="3">
+              <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-bottom:12px;">
+                <input class="input" type="number" placeholder="0" defaultValue="{{ s.a }}">
+                <div style="font-size:12px; color:var(--color-neutral-700); text-align:center;">set {{ s.n }}</div>
+                <input class="input" type="number" placeholder="0" defaultValue="{{ s.b }}">
+              </div>
+            </sc-for>
+            <div class="field" style="margin:20px 0;">
+              <label>Opmerking (optioneel)</label>
+              <input class="input" placeholder="bijv. gestaakt wegens regen">
+            </div>
+            <button class="btn btn-primary btn-block">Uitslag bevestigen</button>
+            <p style="font-size:12px; color:var(--color-neutral-700); margin-top:12px;">Beide spelers moeten de uitslag bevestigen voordat de rating wordt bijgewerkt.</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.rating }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:24px;">
+              <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0;">Rating-historie</h1>
+              <div style="font-family:var(--font-heading); font-weight:800; font-size:32px;">1 450</div>
+            </div>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div class="card" style="border-radius:0; margin-bottom:32px; padding:24px;">
+              {{ ratingChart }}
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="table" style="min-width:600px;">
+                <thead><tr><th>Datum</th><th>Tegen</th><th>Resultaat</th><th>&Delta; Rating</th><th></th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ ratingHistory }}" as="h" hint-placeholder-count="5">
+                    <tr>
+                      <td>{{ h.date }}</td>
+                      <td>{{ h.opponent }}</td>
+                      <td>{{ h.result }}</td>
+                      <td style="color:{{ h.deltaColor }}; font-weight:700;">{{ h.delta }}</td>
+                      <td><span class="tag {{ h.forfeitTagClass }}">{{ h.tagLabel }}</span></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.dispute }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:560px;">
+            <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0 0 8px;">Geschil melden</h1>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px;">Voor uitslagen die niet kloppen of een niet-gespeelde verplichte wedstrijd.</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div class="field" style="margin-bottom:16px;">
+              <label>Wedstrijd</label>
+              <select class="input"><option>Net Ninjas vs. Ace Republic &mdash; 12 aug</option></select>
+            </div>
+            <div class="field" style="margin-bottom:16px;">
+              <label>Reden</label>
+              <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+                <label class="radio"><input type="radio" name="reason" defaultChecked="{{ true }}"><span class="dot"></span> Onjuiste uitslag ingevoerd</label>
+                <label class="radio"><input type="radio" name="reason"><span class="dot"></span> Wedstrijd niet gespeeld</label>
+                <label class="radio"><input type="radio" name="reason"><span class="dot"></span> Gedrag tijdens de wedstrijd</label>
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:24px;">
+              <label>Toelichting</label>
+              <textarea class="input" rows="4" placeholder="Beschrijf wat er is gebeurd&hellip;" style="resize:vertical; font-family:var(--font-body);"></textarea>
+            </div>
+            <div style="display:flex; gap:12px;">
+              <button class="btn btn-secondary">Annuleren</button>
+              <button class="btn btn-primary">Geschil indienen</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.availability }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0 0 8px;">Beschikbaarheid</h1>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px; max-width:60ch;">Zichtbaar voor tegenstanders om een wedstrijd in te plannen. Alleen duo-naam, regio en tijdsblok worden gedeeld &mdash; nooit je e-mailadres of gebruikers-id.</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div style="overflow-x:auto;">
+              <div style="display:grid; grid-template-columns:100px repeat(4,1fr); gap:2px; background:var(--color-divider); min-width:560px;">
+                <div style="background:var(--color-bg); padding:10px;"></div>
+                <sc-for list="{{ dayBlocks }}" as="d" hint-placeholder-count="4">
+                  <div style="background:var(--color-bg); padding:10px; font-family:var(--font-heading); font-weight:700; font-size:13px; text-align:center;">{{ d.label }}</div>
+                </sc-for>
+                <sc-for list="{{ timeSlots }}" as="row" hint-placeholder-count="3">
+                  <React.Fragment>
+                    <div style="background:var(--color-bg); padding:10px; font-size:13px; color:var(--color-neutral-700); display:flex; align-items:center;">{{ row.label }}</div>
+                    <sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="4">
+                      <button onClick="{{ cell.toggle }}" style="background:{{ cell.bg }}; color:{{ cell.fg }}; border:none; padding:16px 4px; cursor:pointer; font-size:12px; font-weight:700;">{{ cell.text }}</button>
+                    </sc-for>
+                  </React.Fragment>
+                </sc-for>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:24px;">Beschikbaarheid opslaan</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ screenIs.admin }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div class="tag tag-accent" style="margin-bottom:10px;">Beheerder</div>
+            <h1 style="font-family:var(--font-heading); font-weight:800; font-size:clamp(28px,3.5vw,40px); margin:0 0 8px;">Platform config</h1>
+            <p style="color:var(--color-neutral-700); font-size:14px; margin:0 0 24px;">Alle tunable parameters op &eacute;&eacute;n plek &mdash; nooit hardcoded.</p>
+            <div class="hr" style="margin-bottom:24px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:2px; background:var(--color-divider); margin-bottom:40px;">
+              <sc-for list="{{ configParams }}" as="p" hint-placeholder-count="6">
+                <div class="card" style="border-radius:0;">
+                  <div class="card-kicker">{{ p.key }}</div>
+                  <div class="card-title" style="font-size:22px;">{{ p.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <h2 style="font-family:var(--font-heading); font-weight:800; font-size:20px; margin:0 0 16px;">Sprint-status</h2>
+            <div class="hr" style="margin-bottom:16px;"></div>
+            <sc-for list="{{ sprints }}" as="sp" hint-placeholder-count="5">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 0; border-bottom:2px solid var(--color-divider); flex-wrap:wrap;">
+                <div style="font-weight:700;">{{ sp.name }}</div>
+                <span class="tag {{ sp.tagClass }}">{{ sp.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+      </main>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 'login', role: 'speler' };
+
+  renderVals() {
+    const s = this.state.screen;
+    const screenIs = {
+      ladder: s === 'ladder', duos: s === 'duos', challenges: s === 'challenges',
+      match: s === 'match', rating: s === 'rating', dispute: s === 'dispute',
+      availability: s === 'availability', admin: s === 'admin'
+    };
+
+    const tabDefs = [
+      ['ladder', 'Ladder'], ['duos', "Mijn duo's"], ['challenges', 'Challenges'],
+      ['match', 'Wedstrijd'], ['rating', 'Rating'], ['dispute', 'Geschil'],
+      ['availability', 'Beschikbaarheid'], ['admin', 'Beheer']
+    ];
+    const navTabs = tabDefs
+      .filter(([id]) => id !== 'admin' || this.state.role === 'beheerder')
+      .map(([id, label]) => ({
+        label, onClick: () => this.setState({ screen: id }),
+        color: s === id ? 'var(--color-accent-700)' : 'var(--color-text)',
+        border: s === id ? '3px solid var(--color-accent)' : '3px solid transparent'
+      }));
+
+    const ladderRows = [
+      { rank: 1, name: 'Net Ninjas', tier: 1, rating: 1820, record: '18-4', streak: 'W6', tierTagClass: 'tag-accent' },
+      { rank: 2, name: 'Ace Republic', tier: 1, rating: 1795, record: '16-6', streak: 'W2', tierTagClass: 'tag-accent' },
+      { rank: 3, name: 'Cross Court Kings', tier: 1, rating: 1760, record: '15-7', streak: 'L1', tierTagClass: 'tag-accent' },
+      { rank: 4, name: 'Bandeja Boys', tier: 2, rating: 1590, record: '12-9', streak: 'W1', tierTagClass: 'tag-neutral' },
+      { rank: 5, name: 'Vibora Vixens', tier: 2, rating: 1560, record: '11-10', streak: 'W3', tierTagClass: 'tag-neutral' },
+      { rank: 6, name: 'Smash Sisters', tier: 3, rating: 1450, record: '9-8', streak: 'W1', tierTagClass: 'tag-outline' },
+      { rank: 7, name: 'Wall Breakers', tier: 3, rating: 1410, record: '8-10', streak: 'L2', tierTagClass: 'tag-outline' },
+      { rank: 8, name: 'Drop Shot Dubs', tier: 3, rating: 1385, record: '7-11', streak: 'L1', tierTagClass: 'tag-outline' }
+    ];
+
+    const myDuos = [
+      { name: 'Smash Sisters', tier: 3, rank: 6, partner: 'Fem', rating: 1450, record: '9-8' },
+      { name: 'Wall Breakers', tier: 3, rank: 7, partner: 'Kobe', rating: 1410, record: '8-10' }
+    ];
+    const invitations = [
+      { from: 'Rico', duoName: 'Baseline Bandits' }
+    ];
+
+    const challengeable = [
+      { rank: 4, name: 'Bandeja Boys', rating: 1590 },
+      { rank: 5, name: 'Vibora Vixens', rating: 1560 },
+      { rank: 7, name: 'Wall Breakers', rating: 1410 },
+      { rank: 8, name: 'Drop Shot Dubs', rating: 1385 }
+    ];
+    const activeChallenges = [
+      { opponent: 'Ace Republic', deadline: '19 aug', direction: 'Uitgaand', status: 'Wacht op reactie', statusClass: 'tag-outline' },
+      { opponent: 'Wall Breakers', deadline: '17 aug', direction: 'Inkomend', status: 'Actie vereist', statusClass: 'tag-accent' }
+    ];
+
+    const sets = [{ n: 1, a: 6, b: 4 }, { n: 2, a: 4, b: 6 }, { n: 3, a: 6, b: 2 }];
+
+    const ratingHistory = [
+      { date: '12 aug', opponent: 'Ace Republic', result: 'Winst', delta: '+18', deltaColor: 'var(--color-accent-700)', tagLabel: '', forfeitTagClass: 'tag-neutral' },
+      { date: '05 aug', opponent: 'Cross Court Kings', result: 'Verlies', delta: '-14', deltaColor: 'var(--color-text)', tagLabel: '', forfeitTagClass: 'tag-neutral' },
+      { date: '29 jul', opponent: 'Drop Shot Dubs', result: 'Forfeit tegen', delta: '-25', deltaColor: 'var(--color-text)', tagLabel: 'Forfeit', forfeitTagClass: 'tag-accent' },
+      { date: '22 jul', opponent: 'Bandeja Boys', result: 'Winst', delta: '+16', deltaColor: 'var(--color-accent-700)', tagLabel: '', forfeitTagClass: 'tag-neutral' },
+      { date: '15 jul', opponent: 'Vibora Vixens', result: 'Winst', delta: '+12', deltaColor: 'var(--color-accent-700)', tagLabel: '', forfeitTagClass: 'tag-neutral' }
+    ];
+
+    const points = [1320, 1332, 1348, 1338, 1354, 1370, 1360, 1376, 1392, 1408, 1394, 1420, 1436, 1425, 1450];
+    const w = 640, h = 200, pad = 20;
+    const max = Math.max(...points), min = Math.min(...points);
+    const coords = points.map((v, i) => {
+      const x = pad + (i / (points.length - 1)) * (w - pad * 2);
+      const y = pad + (1 - (v - min) / (max - min || 1)) * (h - pad * 2);
+      return [x, y];
+    });
+    const path = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
+    const ratingChart = React.createElement('svg', { viewBox: '0 0 ' + w + ' ' + h, style: { width: '100%', height: 'auto', display: 'block' } },
+      React.createElement('line', { x1: pad, y1: h - pad, x2: w - pad, y2: h - pad, stroke: 'var(--color-divider)', strokeWidth: 2 }),
+      React.createElement('path', { d: path, fill: 'none', stroke: 'var(--color-accent)', strokeWidth: 3 }),
+      ...coords.map((c, i) => React.createElement('circle', { key: i, cx: c[0], cy: c[1], r: 3, fill: 'var(--color-text)' }))
+    );
+
+    const dayLabels = ['Vr', 'Za', 'Zo', 'Ma'];
+    const dayBlocks = dayLabels.map(label => ({ label }));
+    const timeLabels = ['Ochtend', 'Middag', 'Avond'];
+    const avail = this.state.availGrid || timeLabels.map(() => dayLabels.map(() => false));
+    const timeSlots = timeLabels.map((label, r) => ({
+      label,
+      cells: dayLabels.map((_, c) => {
+        const on = avail[r][c];
+        return {
+          text: on ? 'Beschikbaar' : '',
+          bg: on ? 'var(--color-accent)' : 'var(--color-bg)',
+          fg: on ? 'var(--color-bg)' : 'var(--color-text)',
+          toggle: () => {
+            const grid = avail.map(row => row.slice());
+            grid[r][c] = !grid[r][c];
+            this.setState({ availGrid: grid });
+          }
+        };
+      })
+    }));
+
+    const configParams = [
+      { key: 'tier_size', value: '200 pt' },
+      { key: 'max_active_duos_per_user', value: '3' },
+      { key: 'challenge_deadline', value: '7 dagen' },
+      { key: 'forfeit_penalty', value: '-25 pt' },
+      { key: 'unplayed_timeout', value: '10 dagen' },
+      { key: 'rechallenge_cooldown', value: '14 dagen' }
+    ];
+    const sprints = [
+      { name: 'Sprint 1 &mdash; Auth, multi-duo, ladder', status: 'Afgerond', tagClass: 'tag-neutral' },
+      { name: 'Sprint 2 &mdash; Challenges met rank-tiers', status: 'Afgerond', tagClass: 'tag-neutral' },
+      { name: 'Sprint 3 &mdash; Matches, ELO, speelverplichting', status: 'Afgerond', tagClass: 'tag-neutral' },
+      { name: 'Sprint 4 &mdash; Disputes', status: 'Wacht op akkoord PO', tagClass: 'tag-accent' },
+      { name: 'Sprint 5 &mdash; Beschikbaarheid & externe API', status: 'Nog niet gestart', tagClass: 'tag-outline' }
+    ];
+
+    return {
+      isLogin: s === 'login',
+      screenIs,
+      navTabs,
+      isPlayerRole: this.state.role === 'speler',
+      isAdminRole: this.state.role === 'beheerder',
+      setRolePlayer: () => this.setState({ role: 'speler' }),
+      setRoleAdmin: () => this.setState({ role: 'beheerder' }),
+      login: () => this.setState({ screen: 'ladder' }),
+      goSignup: (e) => e.preventDefault(),
+      goLogin: () => this.setState({ screen: 'login' }),
+      goChallenges: () => this.setState({ screen: 'challenges' }),
+      ladderRows, myDuos, invitations, challengeable, activeChallenges, sets,
+      ratingHistory, ratingChart, dayBlocks, timeSlots, configParams, sprints
+    };
+  }
+}
+
+</script>
+</body>
+</html>

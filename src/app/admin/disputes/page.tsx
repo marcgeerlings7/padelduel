@@ -73,7 +73,11 @@ export default function AdminDisputesPage() {
   }
 
   if (error) {
-    return <main className="px-4 py-8 sm:px-8 text-sm text-red-600 dark:text-red-400">{error}</main>;
+    return (
+      <main className="px-4 py-8 sm:px-8" style={{ fontSize: 14, color: "var(--color-accent-700)" }}>
+        {error}
+      </main>
+    );
   }
   if (!disputes) {
     return <main className="px-4 py-8 sm:px-8 text-sm">Laden...</main>;
@@ -81,11 +85,15 @@ export default function AdminDisputesPage() {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-8 sm:px-8">
-      <h1 className="text-xl font-bold">Openstaande disputes</h1>
+      <div className="tag tag-accent" style={{ marginBottom: 10 }}>
+        Beheerder
+      </div>
+      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: 0 }}>
+        Openstaande disputes
+      </h1>
+      <div className="hr" style={{ margin: 0 }} />
 
-      {disputes.length === 0 && (
-        <p className="text-sm text-black/50 dark:text-white/50">Geen openstaande disputes.</p>
-      )}
+      {disputes.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>Geen openstaande disputes.</p>}
 
       <ul className="flex flex-col gap-3">
         {disputes.map((d) => {
@@ -96,23 +104,27 @@ export default function AdminDisputesPage() {
               : [];
 
           return (
-            <li key={d.id} className="rounded-md border border-black/10 p-3 text-sm dark:border-white/20">
-              <p className="font-medium">
-                {d.subject === "MATCH_SCORE" ? "Score-dispute" : "Forfeit-dispute"}: {duos[0]?.name} vs.{" "}
-                {duos[1]?.name}
+            <li key={d.id} className="card">
+              <div className="card-kicker">{d.subject === "MATCH_SCORE" ? "Score-dispute" : "Forfeit-dispute"}</div>
+              <p style={{ fontWeight: 700, margin: 0 }}>
+                {duos[0]?.name} vs. {duos[1]?.name}
               </p>
-              {d.match && <p className="text-black/60 dark:text-white/60">Ingediende score: {d.match.scoreRaw}</p>}
-              <p className="text-black/60 dark:text-white/60">
+              {d.match && (
+                <p style={{ color: "var(--color-neutral-700)", fontSize: 13, margin: 0 }}>
+                  Ingediende score: {d.match.scoreRaw}
+                </p>
+              )}
+              <p style={{ color: "var(--color-neutral-700)", fontSize: 13, margin: 0 }}>
                 Reden ({d.raisedByUser.email}): {d.reason}
               </p>
 
               {d.subject === "MATCH_SCORE" && (
-                <div className="mt-2 flex gap-2">
+                <div className="flex gap-2" style={{ marginTop: 8 }}>
                   <button
                     type="button"
                     disabled={busyId === d.id}
                     onClick={() => resolveMatchScore(d.id, "upheld")}
-                    className="rounded-md bg-black px-3 py-1 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                    className="btn btn-primary"
                   >
                     Score handhaven
                   </button>
@@ -120,7 +132,7 @@ export default function AdminDisputesPage() {
                     type="button"
                     disabled={busyId === d.id}
                     onClick={() => resolveMatchScore(d.id, "overturned")}
-                    className="rounded-md border border-black/20 px-3 py-1 disabled:opacity-50 dark:border-white/30"
+                    className="btn btn-secondary"
                   >
                     Match ongeldig verklaren
                   </button>
@@ -128,12 +140,13 @@ export default function AdminDisputesPage() {
               )}
 
               {d.subject === "FORFEIT" && (
-                <div className="mt-2 flex flex-col gap-2">
+                <div className="flex flex-col gap-2" style={{ marginTop: 8 }}>
                   <button
                     type="button"
                     disabled={busyId === d.id}
                     onClick={() => resolveForfeit(d.id, "upheld")}
-                    className="self-start rounded-md bg-black px-3 py-1 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                    className="btn btn-primary"
+                    style={{ alignSelf: "flex-start" }}
                   >
                     Penalty bij beide handhaven
                   </button>
@@ -141,7 +154,8 @@ export default function AdminDisputesPage() {
                     <select
                       value={atFaultChoice[d.id] ?? ""}
                       onChange={(e) => setAtFaultChoice((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                      className="rounded-md border border-black/20 px-2 py-1 dark:border-white/30 dark:bg-transparent"
+                      className="input"
+                      style={{ width: "auto" }}
                     >
                       <option value="">Kies de in gebreke gebleven partij...</option>
                       {duos.map((duo) => (
@@ -154,7 +168,7 @@ export default function AdminDisputesPage() {
                       type="button"
                       disabled={busyId === d.id || !atFaultChoice[d.id]}
                       onClick={() => resolveForfeit(d.id, "overturned")}
-                      className="rounded-md border border-black/20 px-3 py-1 disabled:opacity-50 dark:border-white/30"
+                      className="btn btn-secondary"
                     >
                       Eenzijdig toewijzen
                     </button>

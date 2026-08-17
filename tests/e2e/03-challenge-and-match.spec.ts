@@ -67,7 +67,7 @@ test.describe("Challenge → Match → ELO (Epic E/F)", () => {
     await expect(bandejaCard).toContainText("rating 1"); // sanity: rating-tekst aanwezig
     await bandejaCard.getByRole("link", { name: "Ratinggeschiedenis" }).click();
     await expect(page13.getByText("Wedstrijdresultaat")).toBeVisible();
-    const historyRow = page13.locator("li", { hasText: "Wedstrijdresultaat" }).first();
+    const historyRow = page13.locator("tr", { hasText: "Wedstrijdresultaat" }).first();
     await expect(historyRow).toContainText("1160 → ");
 
     await ctx13.close();

@@ -15,6 +15,8 @@ type DashboardDuoCard = {
     currentRating: number;
     position: number;
     ladderSize: number;
+    tier: number;
+    partnerEmail: string | null;
   };
   above: NearbyEntry[];
   below: NearbyEntry[];
@@ -48,89 +50,108 @@ export default function DashboardPage() {
   }, [router]);
 
   if (error) {
-    return <main className="px-4 py-8 sm:px-8 text-sm text-red-600 dark:text-red-400">{error}</main>;
+    return (
+      <main className="px-4 py-8 sm:px-8" style={{ fontSize: 14, color: "var(--color-accent-700)" }}>
+        {error}
+      </main>
+    );
   }
   if (!data) {
     return <main className="px-4 py-8 sm:px-8 text-sm">Laden...</main>;
   }
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8 sm:px-8">
-      <h1 className="text-xl font-bold">Mijn dashboard</h1>
+    <main className="mx-auto flex max-w-5xl flex-col px-4 py-8 sm:px-8" style={{ maxWidth: 1280 }}>
+      <div className="flex flex-wrap items-end justify-between gap-3" style={{ marginBottom: 24 }}>
+        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
+          Mijn duo&apos;s
+        </h1>
+        {data.canFormMoreDuos && (
+          <Link href="/duos/propose" className="btn btn-primary">
+            + Nieuw duo ({data.activeDuoCount}/{data.maxActiveDuos})
+          </Link>
+        )}
+      </div>
+      <p style={{ color: "var(--color-neutral-700)", fontSize: 14, margin: "0 0 24px" }}>
+        Je kunt lid zijn van meerdere actieve duo&apos;s tegelijk, tot het teammaximum van dit seizoen (
+        {data.maxActiveDuos}).
+      </p>
+      <div className="hr" style={{ marginBottom: 24 }} />
 
       {data.duos.length === 0 && (
-        <div className="rounded-md border border-black/10 p-4 text-sm dark:border-white/20">
-          <p className="mb-3">Je bent nog geen lid van een actief duo.</p>
-          <Link
-            href="/duos/propose"
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
-          >
+        <div className="card" style={{ marginBottom: 40 }}>
+          <p style={{ margin: "0 0 12px" }}>Je bent nog geen lid van een actief duo.</p>
+          <Link href="/duos/propose" className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
             Vorm een duo
           </Link>
         </div>
       )}
 
-      {data.duos.map((card) => (
-        <section
-          key={card.duo.id}
-          className="rounded-md border border-black/10 p-4 dark:border-white/20"
+      {data.duos.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
+            gap: 2,
+            background: "var(--color-divider)",
+            marginBottom: 40,
+          }}
         >
-          <h2 className="font-semibold">{card.duo.name}</h2>
-          <p className="text-sm text-black/70 dark:text-white/70">
-            {card.duo.regionName} · rating {card.duo.currentRating} · positie {card.duo.position}/
-            {card.duo.ladderSize}
-          </p>
+          {data.duos.map((card) => (
+            <section key={card.duo.id} className="card" style={{ borderRadius: 0 }}>
+              <div className="card-kicker">
+                Tier {card.duo.tier} · #{card.duo.position} · {card.duo.regionName}
+              </div>
+              <div className="card-title">{card.duo.name}</div>
+              <div className="card-body">
+                {card.duo.partnerEmail ? `Met ${card.duo.partnerEmail} · ` : ""}
+                rating {card.duo.currentRating}
+              </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase text-black/50 dark:text-white/50">
-                Boven jou
-              </p>
-              <ul className="text-sm">
-                {card.above.length === 0 && <li className="text-black/40 dark:text-white/40">—</li>}
-                {card.above.map((entry) => (
-                  <li key={entry.id}>
-                    #{entry.position} {entry.name} ({entry.currentRating})
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase text-black/50 dark:text-white/50">
-                Onder jou
-              </p>
-              <ul className="text-sm">
-                {card.below.length === 0 && <li className="text-black/40 dark:text-white/40">—</li>}
-                {card.below.map((entry) => (
-                  <li key={entry.id}>
-                    #{entry.position} {entry.name} ({entry.currentRating})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" style={{ marginTop: 12 }}>
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-neutral-600)", marginBottom: 4 }}>
+                    Boven jou
+                  </p>
+                  <ul style={{ fontSize: 13, margin: 0, paddingLeft: 0, listStyle: "none" }}>
+                    {card.above.length === 0 && <li style={{ color: "var(--color-neutral-500)" }}>—</li>}
+                    {card.above.map((entry) => (
+                      <li key={entry.id}>
+                        #{entry.position} {entry.name} ({entry.currentRating})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-neutral-600)", marginBottom: 4 }}>
+                    Onder jou
+                  </p>
+                  <ul style={{ fontSize: 13, margin: 0, paddingLeft: 0, listStyle: "none" }}>
+                    {card.below.length === 0 && <li style={{ color: "var(--color-neutral-500)" }}>—</li>}
+                    {card.below.map((entry) => (
+                      <li key={entry.id}>
+                        #{entry.position} {entry.name} ({entry.currentRating})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
 
-          <div className="mt-3 flex gap-4">
-            <Link href={`/duos/${card.duo.id}/challenges`} className="text-sm underline">
-              Challenges bekijken
-            </Link>
-            <Link href={`/duos/${card.duo.id}/rating-history`} className="text-sm underline">
-              Ratinggeschiedenis
-            </Link>
-          </div>
-        </section>
-      ))}
-
-      {data.duos.length > 0 && data.canFormMoreDuos && (
-        <Link
-          href="/duos/propose"
-          className="self-start rounded-md border border-black/20 px-4 py-2 text-sm font-medium dark:border-white/30"
-        >
-          + Nieuw duo vormen ({data.activeDuoCount}/{data.maxActiveDuos})
-        </Link>
+              <div className="card-meta flex flex-wrap gap-4" style={{ marginTop: 12 }}>
+                <Link href={`/duos/${card.duo.id}/challenges`}>Challenges bekijken</Link>
+                <Link href={`/duos/${card.duo.id}/rating-history`}>Ratinggeschiedenis</Link>
+                <Link href={`/duos/${card.duo.id}/availability`}>Beschikbaarheid</Link>
+              </div>
+            </section>
+          ))}
+        </div>
       )}
 
-      <Link href="/duos/invitations" className="text-sm underline">
+      <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 20, margin: "0 0 16px" }}>
+        Openstaande uitnodigingen
+      </h2>
+      <div className="hr" style={{ marginBottom: 4 }} />
+      <Link href="/duos/invitations" style={{ display: "inline-block", padding: "16px 0" }}>
         Mijn uitnodigingen bekijken
       </Link>
     </main>

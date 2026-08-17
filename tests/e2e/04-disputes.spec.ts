@@ -70,11 +70,14 @@ test.describe("Disputes (Epic G)", () => {
     await page9.getByRole("button", { name: "Dispute openen" }).click();
     await expect(page9.getByText("Dispute geopend")).toBeVisible();
 
-    // Admin ziet de dispute en handhaaft de score
+    // Admin ziet de dispute en handhaaft de score. De seed-data bevat ook
+    // een eigen open dispute (Smash Sisters vs. Baseline Bandits), dus
+    // scopen we de actie op de kaart van déze dispute.
     await pageAdmin.goto("/admin/disputes");
-    await expect(pageAdmin.getByText("Volley Vikings vs. Ace Avengers")).toBeVisible();
-    await pageAdmin.getByRole("button", { name: "Score handhaven" }).click();
-    await expect(pageAdmin.getByText("Geen openstaande disputes")).toBeVisible();
+    const disputeCard = pageAdmin.locator("li", { hasText: "Volley Vikings vs. Ace Avengers" });
+    await expect(disputeCard).toBeVisible();
+    await disputeCard.getByRole("button", { name: "Score handhaven" }).click();
+    await expect(pageAdmin.getByText("Volley Vikings vs. Ace Avengers")).toHaveCount(0);
 
     // Match/challenge zijn nu voltooid, rating is bijgewerkt
     await page7.goto("/dashboard");

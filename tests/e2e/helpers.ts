@@ -7,7 +7,7 @@ export async function login(page: Page, email: string, password = SEED_PASSWORD)
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
   await Promise.all([page.waitForURL("**/dashboard"), page.click('button[type="submit"]')]);
-  await expect(page.getByRole("heading", { name: "Mijn dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mijn duo's" })).toBeVisible();
 }
 
 /**

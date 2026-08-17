@@ -135,3 +135,60 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 ### Admin-link in de navigatiebalk leest de rol uit een ongeverifieerd JWT-payload
 **Wat:** `getStoredRole()` decodeert het JWT client-side zonder handtekeningverificatie, puur om de "Admin"-link wel/niet te tonen.
 **Risico:** Geen — dit is nooit de autorisatiegrens (elke admin-API-route controleert `user.role` server-side opnieuw via het geverifieerde token). Een gemanipuleerd client-side token zou hooguit een onterecht zichtbare link geven, niet toegang tot data.
+
+---
+
+## Na Sprint 5 (Beschikbaarheid & Externe API) — afronding v1-scope
+
+### Externe-API-ratelimiting is in-memory, per-instance
+**Wat:** `src/lib/apiClient/rateLimit.ts` (fixed-window) heeft dezelfde grens als de login-rate-limiter uit Sprint 1: reset bij herstart, niet gedeeld tussen meerdere instanties.
+**Risico:** Zelfde categorie als de bestaande login-rate-limiting-tech-debt. Bij opschalen naar meerdere instanties: vervangen door een gedeelde store (Redis).
+
+### API-key-hashing met SHA-256 i.p.v. bcrypt (bewuste, afwijkende keuze)
+**Wat:** `src/lib/apiClient/apiKey.ts` gebruikt een snelle cryptografische hash (SHA-256) i.p.v. bcrypt (dat wél gebruikt wordt voor wachtwoorden).
+**Waarom geen risico:** API-keys zijn hoge-entropie, systeem-gegenereerde secrets (48 hex-tekens) — een offline brute-force-aanval op zo'n secret is praktisch onhaalbaar, dus de "langzaam maken"-eigenschap van bcrypt (bedoeld tegen laag-entropie, door mensen bedachte wachtwoorden) voegt hier geen relevante beveiliging toe, alleen onnodige latency per API-aanroep. Een deterministische hash maakt bovendien een directe DB-lookup op `api_key_hash` mogelijk i.p.v. alle actieve clients te moeten doorlopen.
+
+### Voided-match-doodlopende-weg (herhaling vanuit Sprint 4) blijft ongewijzigd
+Zie "Na Sprint 4" hierboven — niet opnieuw aangepakt in Sprint 5, buiten scope.
+
+### v1-scope compleet
+Met Sprint 5 is de volledige v1-scope uit de PRD (Sprint 1 t/m 5) functioneel gebouwd. Openstaande, met opzet niet zelf ingevulde PRD-open-vragen (§14) — rating-tier-breedte, forfeit-penalty-hoogte, max-aantal-duo's, exacte deadlines — staan nog op de richtwaarden uit de documenten; dit is een bewuste keuze (niet zelf besluiten wat een productbeslissing is), geen omissie.
+
+---
+
+## Visuele restyling (na Sprint 5, op verzoek)
+
+### Design system "Modernist" verwerkt uit /websitedesign
+**Wat:** de door de gebruiker aangeleverde `/websitedesign`-map (een Claude-gegenereerd design system + schermmockup) is verwerkt als de daadwerkelijke styling van de app: `src/app/design-system.css` (kopie van de tokens/componentklassen), Archivo-lettertype via `next/font/google`, en alle bestaande pagina's herstijld met de nieuwe componentklassen (`.btn`, `.card`, `.tag`, `.table`, `.field`/`.input`, `.hr`). Geen dark-mode meer (het design system is bewust single-theme).
+**Belangrijk:** dit was een **presentatie-only** wijziging — geen enkele service, API-route of databaselaag is aangeraakt. Alle 165 unit tests en 6 e2e-tests slagen ongewijzigd; één e2e-selector (`tr.bg-yellow-100` → `tr[data-own="true"]`) is aangepast omdat de visuele stijl van "eigen duo" veranderde, niet de onderliggende logica.
+**`/websitedesign` blijft in de repo staan** als brondocumentatie voor het design system (tokens aanpassen kan daar, zie het `readme.md` erin) — het is geen onderdeel van de gebouwde app zelf.
+**Risico:** Geen bekend risico. Wel een aandachtspunt voor toekomstige sprints: nieuwe UI moet de nieuwe componentklassen gebruiken (niet terugvallen op losse Tailwind-grijstinten), en nieuwe e2e-tests moeten waar mogelijk op tekst/rol/`data-*`-attributen selecteren i.p.v. op stylingklassen, om herstyling in de toekomst niet weer tests te laten breken.
+
+---
+
+## Lay-out-herbouw naar de PDF-mockup (na de restyling hierboven, op verzoek)
+
+De eerdere restyling had alleen kleuren/componentklassen overgenomen, niet de daadwerkelijke schermindeling uit `/websitedesign`. Deze ronde bouwt de indeling zelf na, met een paar bewuste aanpassingen waar de mockup (een statische illustratieve demo) niet één-op-één paste op het echte datamodel:
+
+### Nieuwe top-level pagina's: `/challenges`, `/rating-history`, `/availability`
+**Wat:** deze routes bestonden voorheen alleen duo-scoped (`/duos/[id]/...`), bereikbaar via een link op een specifieke duo-kaart op het dashboard. De mockup toont ze als eigen navigatietabs. De duo-scoped content is verplaatst naar herbruikbare view-componenten (`src/components/duo/Duo*View.tsx`); de nieuwe top-level pagina's tonen een duo-picker (nodig zodra een gebruiker meerdere actieve duo's heeft) en renderen dezelfde view. De duo-scoped routes bestaan nog steeds (dashboard-kaarten linken er nog naartoe, en de e2e-tests over meerdere duo's leunen erop).
+**Risico:** Geen — puur navigatie/hergebruik, geen logica gewijzigd.
+
+### Beschikbaarheid: vaste tijdvakken (Ochtend/Middag/Avond) i.p.v. vrije tijdsblokken
+**Wat:** de mockup toont een weekrooster met 3 vaste dagdelen per dag, aan/uit te toggelen. Het echte datamodel (`DuoAvailability`) ondersteunt vrije start-/eindtijden. Om de mockup-indeling te volgen zijn 3 vaste tijdvakken gekozen (08:00–12:00 / 12:00–18:00 / 18:00–22:00); een klik op een cel maakt of verwijdert het bijbehorende blok via de bestaande API. Dit is een **bewuste beperking t.o.v. de oude UI** (niet meer élk tijdstip kiezen) ten gunste van de gevraagde lay-out-fidelity.
+**Risico:** Laag — de API/datamodel ondersteunen nog steeds vrije tijden; alleen deze UI legt zichzelf vast op 3 vakken. Als vrije tijden alsnog gewenst zijn, is dat een aparte productbeslissing.
+
+### Nieuwe admin-pagina `/admin/platform-config` (+ endpoint `GET /api/admin/platform-config`)
+**Wat:** read-only overzicht van de `platform_config`-tabel, zoals in de mockup. Nieuw, want bestond nog niet.
+**Risico:** Geen — alleen-lezen, admin-only (zelfde auth-check als de andere admin-routes).
+
+### Ladder toont nu ook `tierSize`/tier-aantal (API-uitbreiding)
+**Wat:** `GET /api/ladder` en `GET /api/dashboard` geven nu ook `tierSize` resp. `tier` per duo terug (voorheen alleen server-side gebruikt binnen `ladderService`), zodat de UI dit kan tonen zonder de waarde hard te coderen. Puur additief, geen bestaand gedrag gewijzigd.
+
+### Weggelaten mockup-elementen (bewust, want geen echte data)
+**W-L-record en streak** op de ladder-tabel: de mockup toont deze kolommen, maar de app houdt geen wedstrijd-telling/streak bij (alleen rating). Niet nagebouwd met verzonnen data. **"Sprint-status"-sectie** op de admin-configpagina: dat is projectmanagement-informatie uit CLAUDE.md, geen app-data — bewust weggelaten i.p.v. hardcoded/nep-content in de live app te zetten.
+
+### Nieuwe pagina `/info`
+**Wat:** statische uitlegpagina (ladder, tiers, multi-duo, challenges, ELO-rating in eenvoudige taal, forfeit, disputes, beschikbaarheid) — op expliciet verzoek. Geen bestaande functionaliteit geraakt.
+
+**Testen:** alle 165 unit tests en alle 6 e2e-specs slagen. Twee e2e-bestanden zijn aangepast op de nieuwe lay-out: `helpers.ts` (inlog-heading "Mijn dashboard" → "Mijn duo's"), `03-challenge-and-match.spec.ts` (rating-historie-rij is nu een `<tr>` i.p.v. `<li>`), `05-availability-and-admin.spec.ts` (tijdsblok-formulier vervangen door het aanklikken van een roostercel via `aria-label`).

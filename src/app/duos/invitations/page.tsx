@@ -52,27 +52,31 @@ export default function InvitationsPage() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8 sm:px-8">
       <div>
-        <h1 className="text-xl font-bold">Mijn uitnodigingen</h1>
+        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: 0 }}>
+          Mijn uitnodigingen
+        </h1>
+        <div className="hr" />
       </div>
 
       <section>
-        <h2 className="mb-2 font-semibold">Ontvangen (wacht op jouw reactie)</h2>
-        {data.received.length === 0 && (
-          <p className="text-sm text-black/50 dark:text-white/50">Geen openstaande uitnodigingen.</p>
-        )}
-        <ul className="flex flex-col gap-2">
+        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 18, marginBottom: 12 }}>
+          Ontvangen (wacht op jouw reactie)
+        </h2>
+        {data.received.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>Geen openstaande uitnodigingen.</p>}
+        <ul style={{ display: "flex", flexDirection: "column", gap: 2, background: "var(--color-divider)" }}>
           {data.received.map((inv) => (
             <li
               key={inv.id}
-              className="flex items-center justify-between rounded-md border border-black/10 p-3 text-sm dark:border-white/20"
+              className="card"
+              style={{ borderRadius: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
             >
-              <span>{inv.duoName}</span>
+              <span style={{ fontWeight: 700 }}>{inv.duoName}</span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   disabled={busyId === inv.id}
                   onClick={() => respond(inv.id, "accept")}
-                  className="rounded-md bg-black px-3 py-1 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                  className="btn btn-primary"
                 >
                   Accepteren
                 </button>
@@ -80,7 +84,7 @@ export default function InvitationsPage() {
                   type="button"
                   disabled={busyId === inv.id}
                   onClick={() => respond(inv.id, "decline")}
-                  className="rounded-md border border-black/20 px-3 py-1 disabled:opacity-50 dark:border-white/30"
+                  className="btn btn-secondary"
                 >
                   Weigeren
                 </button>
@@ -91,16 +95,13 @@ export default function InvitationsPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 font-semibold">Verstuurd (wacht op de ander)</h2>
-        {data.sent.length === 0 && (
-          <p className="text-sm text-black/50 dark:text-white/50">Geen openstaande voorstellen.</p>
-        )}
-        <ul className="flex flex-col gap-2">
+        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 18, marginBottom: 12 }}>
+          Verstuurd (wacht op de ander)
+        </h2>
+        {data.sent.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>Geen openstaande voorstellen.</p>}
+        <ul style={{ display: "flex", flexDirection: "column", gap: 2, background: "var(--color-divider)" }}>
           {data.sent.map((inv) => (
-            <li
-              key={inv.id}
-              className="rounded-md border border-black/10 p-3 text-sm dark:border-white/20"
-            >
+            <li key={inv.id} className="card" style={{ borderRadius: 0 }}>
               {inv.duoName}
             </li>
           ))}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockPrisma = {
-  duoMembership: { findMany: vi.fn() },
+  duoMembership: { findMany: vi.fn(), findFirst: vi.fn() },
 };
 const mockGetLadder = vi.fn();
 const mockGetConfigNumber = vi.fn();
@@ -40,6 +40,7 @@ function membership(duoId: string, regionId = "region-1") {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetConfigNumber.mockResolvedValue(5);
+  mockPrisma.duoMembership.findFirst.mockResolvedValue(null);
 });
 
 describe("getDashboard", () => {

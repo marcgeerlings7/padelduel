@@ -11,7 +11,11 @@ type LadderEntry = {
   currentRating: number;
   position: number;
   tier: number;
+  wins: number;
+  losses: number;
+  streak: string;
 };
+type LadderResponse = { region: Region; ladder: LadderEntry[]; tierSize: number };
 type MyDuo = { id: string; name: string; regionId: string; tier: number };
 type ChallengeSummary = { status: string };
 
@@ -19,6 +23,7 @@ export default function LadderPage() {
   const [regions, setRegions] = useState<Region[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string>("");
   const [ladder, setLadder] = useState<LadderEntry[] | null>(null);
+  const [tierSize, setTierSize] = useState<number | null>(null);
   const [myDuos, setMyDuos] = useState<MyDuo[]>([]);
   const [actingDuoId, setActingDuoId] = useState<string>("");
   const [actingDuoBusy, setActingDuoBusy] = useState(false);
@@ -48,8 +53,11 @@ export default function LadderPage() {
   useEffect(() => {
     if (!selectedSlug) return;
     setLadder(null);
-    apiFetch<{ ladder: LadderEntry[] }>(`/api/ladder?regionSlug=${selectedSlug}`)
-      .then((data) => setLadder(data.ladder))
+    apiFetch<LadderResponse>(`/api/ladder?regionSlug=${selectedSlug}`)
+      .then((data) => {
+        setLadder(data.ladder);
+        setTierSize(data.tierSize);
+      })
       .catch(() => setError("Kon de ladder niet laden."));
   }, [selectedSlug]);
 
@@ -103,63 +111,88 @@ export default function LadderPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8 sm:px-8">
-      <h1 className="text-xl font-bold">Ladder</h1>
+    <main className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="tag tag-accent" style={{ marginBottom: 10 }}>
+            Regionale ladder
+          </div>
+          <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
+            Ladder
+          </h1>
+        </div>
+        {ladder && ladder.length > 0 && tierSize && (
+          <div className="flex flex-wrap gap-2">
+            <span className="tag tag-outline">
+              {Math.max(...ladder.map((e) => e.tier)) + 1} tiers · {tierSize} pt/tier
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="hr" style={{ margin: 0 }} />
 
-      {regions.length > 0 && (
-        <label className="flex flex-col gap-1 text-sm sm:w-64">
-          Regio
-          <select
-            value={selectedSlug}
-            onChange={(e) => setSelectedSlug(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
-          >
-            {regions.map((region) => (
-              <option key={region.id} value={region.slug}>
-                {region.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      <div className="flex flex-wrap gap-4">
+        {regions.length > 0 && (
+          <div className="field" style={{ minWidth: 220 }}>
+            <label>Regio</label>
+            <select className="input" value={selectedSlug} onChange={(e) => setSelectedSlug(e.target.value)}>
+              {regions.map((region) => (
+                <option key={region.id} value={region.slug}>
+                  {region.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-      {myDuosInRegion.length > 1 && (
-        <label className="flex flex-col gap-1 text-sm sm:w-64">
-          Uitdagen namens
-          <select
-            value={actingDuoId}
-            onChange={(e) => setActingDuoId(e.target.value)}
-            className="rounded-md border border-black/20 px-3 py-2 dark:border-white/30 dark:bg-transparent"
-          >
-            {myDuosInRegion.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+        {myDuosInRegion.length > 1 && (
+          <div className="field" style={{ minWidth: 220 }}>
+            <label>Uitdagen namens</label>
+            <select className="input" value={actingDuoId} onChange={(e) => setActingDuoId(e.target.value)}>
+              {myDuosInRegion.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       {actingDuo && actingDuoBusy && (
-        <p className="text-sm text-black/60 dark:text-white/60">
+        <p className="text-muted" style={{ fontSize: 13 }}>
           {actingDuo.name} heeft al een actieve challenge — uitdagen is pas weer mogelijk als die is
           afgerond.
         </p>
       )}
 
-      {message && <p className="text-sm text-green-700 dark:text-green-400">{message}</p>}
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {actingDuo &&
+        !actingDuoBusy &&
+        ladder &&
+        !ladder.some((e) => e.tier === actingDuo.tier && e.id !== actingDuo.id) && (
+          <p className="text-muted" style={{ fontSize: 13 }}>
+            Er staat momenteel geen ander duo in Tier {actingDuo.tier} — {actingDuo.name} kan nu niemand
+            uitdagen. Zodra een duo in dezelfde tier komt te staan, verschijnt hier een uitdaagknop.
+          </p>
+        )}
+
+      {message && (
+        <p style={{ fontSize: 13, color: "var(--color-text)", fontWeight: 700 }}>{message}</p>
+      )}
+      {error && <p style={{ fontSize: 13, color: "var(--color-accent-700)" }}>{error}</p>}
 
       {ladder && (
-        <div className="overflow-x-auto rounded-md border border-black/10 dark:border-white/20">
-          <table className="w-full text-left text-sm">
+        <div style={{ overflowX: "auto" }}>
+          <table className="table" style={{ minWidth: 640 }}>
             <thead>
-              <tr className="border-b border-black/10 dark:border-white/20">
-                <th className="px-3 py-2">#</th>
-                <th className="px-3 py-2">Duo</th>
-                <th className="px-3 py-2">Tier</th>
-                <th className="px-3 py-2 text-right">Rating</th>
-                {actingDuo && <th className="px-3 py-2" />}
+              <tr>
+                <th>#</th>
+                <th>Duo</th>
+                <th>Tier</th>
+                <th style={{ textAlign: "right" }}>Rating</th>
+                <th style={{ textAlign: "right" }}>W-L</th>
+                <th style={{ textAlign: "right" }}>Streak</th>
+                {actingDuo && <th />}
               </tr>
             </thead>
             <tbody>
@@ -170,28 +203,38 @@ export default function LadderPage() {
                 return (
                   <tr
                     key={entry.id}
-                    className={
-                      "border-b border-black/5 last:border-0 dark:border-white/10" +
-                      (isMine ? " bg-yellow-100 font-semibold dark:bg-yellow-900/40" : "") +
-                      (isChallengeable ? " bg-green-50 dark:bg-green-900/20" : "")
-                    }
+                    data-own={isMine || undefined}
+                    style={{
+                      fontWeight: isMine ? 700 : undefined,
+                      background: isMine
+                        ? "var(--color-accent-100)"
+                        : isChallengeable
+                          ? "var(--color-neutral-100)"
+                          : undefined,
+                    }}
                   >
-                    <td className="px-3 py-2">{entry.position}</td>
-                    <td className="px-3 py-2">
+                    <td style={{ fontFamily: "var(--font-heading)", fontWeight: 800 }}>{entry.position}</td>
+                    <td>
                       {entry.name}
                       {isMine && " (jouw duo)"}
                     </td>
-                    <td className="px-3 py-2">{entry.tier}</td>
-                    <td className="px-3 py-2 text-right">{entry.currentRating}</td>
+                    <td>
+                      <span className="tag tag-outline">Tier {entry.tier}</span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>{entry.currentRating}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {entry.wins}-{entry.losses}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{entry.streak}</td>
                     {actingDuo && (
-                      <td className="px-3 py-2 text-right">
+                      <td style={{ textAlign: "right" }}>
                         {isChallengeable && (
                           <button
                             type="button"
                             disabled={actingDuoBusy || challengingId === entry.id}
                             onClick={() => handleChallenge(entry.id)}
                             title={actingDuoBusy ? "Je hebt al een actieve challenge" : undefined}
-                            className="rounded-md border border-black/20 px-2 py-1 text-xs disabled:opacity-40 dark:border-white/30"
+                            className="btn btn-ghost"
                           >
                             Uitdagen
                           </button>
