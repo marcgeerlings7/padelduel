@@ -71,6 +71,7 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 **Risico:** Zonder een externe scheduler (bijv. Vercel Cron, een cron-container, of een handmatige aanroep) die dit endpoint periodiek aanroept, verlopen challenges nooit automatisch.
 **Wanneer relevant:** Vóór een echte pilot-rollout (PRD §13) — dan moet er een scheduler geconfigureerd worden die dit endpoint bijv. elk uur aanroept.
 **Mogelijke oplossing:** Vercel Cron (`vercel.json` met een `crons`-sectie) of een gelijkwaardige scheduler in de gekozen hostingomgeving.
+**Update (Vercel-deploy):** opgelost via `vercel.json` (`crons`) + een nieuw endpoint `GET/POST /api/jobs/run-all` dat alle drie de jobs (expire-challenges, auto-confirm-matches, expire-unplayed-challenges) in één aanroep combineert — nodig omdat het Hobby-plan maximaal 2 cron jobs toestaat. De losse endpoints blijven bestaan voor handmatige/gerichte aanroepen. Autorisatie via `src/lib/auth/jobAuth.ts`: accepteert zowel de bestaande `x-job-secret`-header als `Authorization: Bearer <JOBS_SECRET>` (het formaat waarmee Vercel Cron automatisch de `CRON_SECRET`-omgevingsvariabele meestuurt — die moet dus gelijk gezet worden aan `JOBS_SECRET`).
 
 ### Forfeit-cooldown wordt afgeleid uit `RatingHistory`, niet uit een aparte kolom
 **Wat:** `isDuoInForfeitCooldown` in `challengeService.ts` bepaalt de cooldown door het meest recente `RatingHistory`-record met `is_forfeit=true` op te zoeken en `forfeit_cooldown_days` erbij op te tellen — zelfde patroon als de duo-dissolution-cooldown uit Sprint 1.
@@ -192,3 +193,30 @@ De eerdere restyling had alleen kleuren/componentklassen overgenomen, niet de da
 **Wat:** statische uitlegpagina (ladder, tiers, multi-duo, challenges, ELO-rating in eenvoudige taal, forfeit, disputes, beschikbaarheid) — op expliciet verzoek. Geen bestaande functionaliteit geraakt.
 
 **Testen:** alle 165 unit tests en alle 6 e2e-specs slagen. Twee e2e-bestanden zijn aangepast op de nieuwe lay-out: `helpers.ts` (inlog-heading "Mijn dashboard" → "Mijn duo's"), `03-challenge-and-match.spec.ts` (rating-historie-rij is nu een `<tr>` i.p.v. `<li>`), `05-availability-and-admin.spec.ts` (tijdsblok-formulier vervangen door het aanklikken van een roostercel via `aria-label`).
+
+---
+
+## Vercel-deploy
+
+### `prisma generate` ontbrak in het build-proces
+**Wat:** Vercel cachet `node_modules` tussen builds, waardoor `prisma generate` (dat normaal via `npm install`'s post-install-lifecycle van Prisma zelf draait) soms wordt overgeslagen — de gegenereerde Prisma Client blijft dan verouderd/afwezig, met een `PrismaClientInitializationError` tijdens "Collecting page data" tot gevolg.
+**Oplossing:** `"postinstall": "prisma generate"` toegevoegd aan `package.json`, zodat dit expliciet en betrouwbaar bij elke install gebeurt (de door Prisma zelf aanbevolen fix voor Vercel, zie https://pris.ly/d/vercel-build).
+
+### Vereiste environment-variabelen in het Vercel-project
+Moeten in Vercel (Project Settings → Environment Variables) gezet worden — staan nergens in de repo (`.env` is gitignored):
+- `DATABASE_URL` — een bereikbare, gehoste PostgreSQL (Neon/Supabase/Vercel Postgres/etc.); de lokale devcontainer-Postgres is vanaf Vercel niet bereikbaar.
+- `JWT_SECRET` — willekeurige lange string, voor sessie- en activatietokens.
+- `APP_BASE_URL` — de productie-URL (bijv. `https://padelduel.vercel.app`), gebruikt om de activatielink in registratiemails op te bouwen.
+- `JOBS_SECRET` — willekeurige lange string, beveiligt de `/api/jobs/*`-endpoints.
+- `CRON_SECRET` — **exact dezelfde waarde als `JOBS_SECRET`.** Vercel Cron stuurt automatisch `Authorization: Bearer $CRON_SECRET` mee bij het aanroepen van een pad uit `vercel.json`; `isAuthorizedJobRequest` (`src/lib/auth/jobAuth.ts`) accepteert dat header-formaat naast de bestaande `x-job-secret`-header.
+
+### Database-migraties worden niet automatisch uitgevoerd tijdens de build
+**Wat:** de build draait bewust geen `prisma migrate deploy` (migraties tegen een productiedatabase horen niet stilzwijgend in elke build te gebeuren, en het buildproces heeft niet gegarandeerd netwerktoegang tot de gekozen hosting-Postgres).
+**Actie vóór de eerste deploy (en na elke schema-wijziging):** eenmalig handmatig `npx prisma migrate deploy` draaien tegen de productie-`DATABASE_URL` (bijv. lokaal met die env-var tijdelijk gezet, of via `vercel env pull`). De migraties zelf bevatten ook de `platform_config`-seedwaarden (tier-breedte, deadlines, penalty's) — `scripts/seed.ts` (de 20 demo-users/duo's) hoort daarentegen **niet** tegen productie gedraaid te worden, dat is uitsluitend voor lokale ontwikkeling/demo.
+
+### Achtergrondjobs draaien nu via Vercel Cron
+**Wat:** `vercel.json` bevat één cron-entry (`0 * * * *`, elk uur) naar het nieuwe gecombineerde endpoint `GET /api/jobs/run-all` — zie de bijgewerkte tech-debt-notities hierboven bij Sprint 2/3. Lost de eerder gedocumenteerde "verloopt nooit automatisch"-risico's op, mits `CRON_SECRET` (zie boven) is gezet.
+
+### E-mail wordt nog niet echt verstuurd
+**Wat:** `sendEmail` (`src/lib/auth/email.ts`) logt de activatielink alleen naar de servers-console (Vercel Function Logs) — er is nog geen echte provider gekoppeld (bewuste, nog niet ingevulde PRD-open-vraag, zie eerdere Sprint 1-notitie). Op Vercel betekent dit concreet: na registreren moet de activatielink even uit de Vercel Function Logs gehaald worden om een account te activeren, i.p.v. dat de gebruiker een e-mail ontvangt.
+**Risico:** Prima voor een demo aan vrienden; niet geschikt voor een echte rollout zonder een provider (Resend/Postmark/SES) te koppelen.
