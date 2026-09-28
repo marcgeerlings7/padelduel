@@ -1,15 +1,25 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { applyMatchResult, applyForfeitPenalty } from "@/lib/elo";
-import { parseScore, determineWinner, SetScore, InvalidScoreError } from "@/lib/match/score";
+import {
+  applyMatchResult,
+  applyForfeitPenalty,
+  DEFAULT_MARGIN_CONFIG,
+  MARGIN_CONFIG_KEYS,
+  MarginConfig,
+  validateMarginConfig,
+} from "@/lib/elo";
+import { parseScore, determineWinner, summarizeScore, SetScore, InvalidScoreError } from "@/lib/match/score";
 import {
   resolveScoreSubmission,
   type MatchSideName,
   type ResolvedMatchResult,
   type ScoreSubmission,
 } from "@/lib/match/resultType";
-import { getLadder } from "@/server/services/ladderService";
-import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { getLadderPositions } from "@/server/services/ladderService";
+import {
+  getConfigNumber,
+  getConfigNumberOrDefault,
+} from "@/server/repositories/platformConfigRepository";
 import { lockChallengeRow } from "@/server/repositories/challengeLock";
 import { notifySafely, notifyScoreSubmitted } from "@/server/services/notificationService";
 
@@ -245,6 +255,23 @@ export async function respondToMatch(
 export type FinalizeResult = { alreadyProcessed: boolean };
 
 /**
+ * Gamesaldo-parameters (ELO_Algoritme.md §2bis) uit platform_config, met de
+ * gedocumenteerde defaults uit src/lib/elo als fallback zolang de rijen nog
+ * niet via een migratie bestaan. Een ongeldige combinatie (min <= 0 of
+ * max < min) is een harde fout: liever geen verwerking dan een winnaar die
+ * punten verliest.
+ */
+async function getMarginConfig(): Promise<MarginConfig> {
+  const [minMultiplier, maxMultiplier] = await Promise.all([
+    getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.minMultiplier, DEFAULT_MARGIN_CONFIG.minMultiplier),
+    getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.maxMultiplier, DEFAULT_MARGIN_CONFIG.maxMultiplier),
+  ]);
+  const config = { minMultiplier, maxMultiplier };
+  validateMarginConfig(config);
+  return config;
+}
+
+/**
  * Gedeelde ELO-verwerking (US-F4), gebruikt door zowel handmatige
  * bevestiging als de auto-confirm-achtergrondjob (US-F3: "triggert
  * vervolgens dezelfde ELO-verwerking als een handmatige bevestiging").
@@ -273,6 +300,12 @@ export async function finalizeMatch(
   const challenge = await prisma.challenge.findUniqueOrThrow({ where: { id: match.challengeId } });
   const sets = parseScore(match.scoreRaw);
   const winnerSide = determineWinner(sets);
+  // KNLTB-telling (match-tiebreak = 1-0), zie summarizeScore/§2bis.
+  const summary = summarizeScore(sets);
+  const games =
+    winnerSide === "challenger"
+      ? { winner: summary.challengerGames, loser: summary.challengedGames }
+      : { winner: summary.challengedGames, loser: summary.challengerGames };
   const winnerDuoId = winnerSide === "challenger" ? challenge.challengerDuoId : challenge.challengedDuoId;
   const loserDuoId = winnerSide === "challenger" ? challenge.challengedDuoId : challenge.challengerDuoId;
 
@@ -281,7 +314,10 @@ export async function finalizeMatch(
     prisma.duo.findUniqueOrThrow({ where: { id: loserDuoId } }),
   ]);
 
-  const ladder = await getLadder(winnerDuo.regionId);
+  const [ladder, marginConfig] = await Promise.all([
+    getLadderPositions(winnerDuo.regionId),
+    getMarginConfig(),
+  ]);
   const ladderSize = ladder.length || 1;
   const winnerPercentile = (ladder.find((e) => e.id === winnerDuoId)?.position ?? ladderSize) / ladderSize;
   const loserPercentile = (ladder.find((e) => e.id === loserDuoId)?.position ?? ladderSize) / ladderSize;
@@ -308,6 +344,8 @@ export async function finalizeMatch(
     winnerPercentile,
     loserPercentile,
     isRepeatedOpponentWithinWindow: priorMatch !== null,
+    games,
+    marginConfig,
   });
 
   return prisma.$transaction(async (tx) => {
@@ -328,6 +366,9 @@ export async function finalizeMatch(
       where: { id: loserDuo.id },
       data: { currentRating: eloResult.loserNewRating, matchesPlayed: { increment: 1 } },
     });
+    // k_factor = de effectief toegepaste K (status-K × eventuele demping ×
+    // gamesaldo-multiplier, afgerond), zodat rating_after - rating_before
+    // herleidbaar blijft tot k_factor × (S - E), zie ELO_Algoritme.md §2bis.
     await tx.ratingHistory.create({
       data: {
         duoId: winnerDuo.id,

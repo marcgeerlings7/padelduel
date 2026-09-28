@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { getTier } from "@/lib/elo";
 import { getLadder, LadderEntry } from "@/server/services/ladderService";
+import { DuoStatsSummary, toDuoStatsSummary } from "@/lib/stats";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { getDuoStats } from "@/server/services/statsService";
 
 export type DashboardDuoCard = {
   duo: {
@@ -14,7 +16,7 @@ export type DashboardDuoCard = {
     ladderSize: number;
     tier: number;
     partnerEmail: string | null;
-  };
+  } & DuoStatsSummary; // afgeleide statistieken (KNLTB-aanvullingen), zelfde velden als LadderEntry
   above: LadderEntry[];
   below: LadderEntry[];
 };
@@ -59,6 +61,13 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
     const below =
       ownIndex >= 0 ? ladder.slice(ownIndex + 1, ownIndex + 1 + NEARBY_COUNT) : [];
 
+    // Het eigen duo staat (als actief duo) altijd in de ladder van zijn
+    // regio; de losse stats-query is alleen een vangnet.
+    const ownEntry = ownIndex >= 0 ? ladder[ownIndex] : null;
+    const stats: DuoStatsSummary =
+      ownEntry ??
+      toDuoStatsSummary((await getDuoStats([{ id: duo.id, createdAt: duo.createdAt }])).get(duo.id)!);
+
     const partnerMembership = await prisma.duoMembership.findFirst({
       where: { duoId: duo.id, userId: { not: userId }, leftAt: null },
       include: { user: true },
@@ -75,6 +84,7 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
         ladderSize: ladder.length,
         tier: getTier(duo.currentRating, tierSize),
         partnerEmail: partnerMembership?.user.email ?? null,
+        ...toDuoStatsSummary(stats),
       },
       above,
       below,

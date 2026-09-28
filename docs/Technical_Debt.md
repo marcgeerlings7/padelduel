@@ -199,7 +199,8 @@ De eerdere restyling had alleen kleuren/componentklassen overgenomen, niet de da
 **Wat:** `GET /api/ladder` en `GET /api/dashboard` geven nu ook `tierSize` resp. `tier` per duo terug (voorheen alleen server-side gebruikt binnen `ladderService`), zodat de UI dit kan tonen zonder de waarde hard te coderen. Puur additief, geen bestaand gedrag gewijzigd.
 
 ### Weggelaten mockup-elementen (bewust, want geen echte data)
-**W-L-record en streak** op de ladder-tabel: de mockup toont deze kolommen, maar de app houdt geen wedstrijd-telling/streak bij (alleen rating). Niet nagebouwd met verzonnen data. **"Sprint-status"-sectie** op de admin-configpagina: dat is projectmanagement-informatie uit CLAUDE.md, geen app-data — bewust weggelaten i.p.v. hardcoded/nep-content in de live app te zetten.
+**W-L-record en streak** op de ladder-tabel: de mockup toont deze kolommen, maar de app houdt geen wedstrijd-telling/streak bij (alleen rating). Niet nagebouwd met verzonnen data.
+**Opgelost (KNLTB-aanvullingen, 2026-09-28):** W-L, reeks, set-/gamesaldo, betrouwbaarheid en inactief-vlag worden nu afgeleid uit bevestigde matches/challenges (`statsService`, `src/lib/stats`) en additief meegegeven in `GET /api/ladder` en `GET /api/dashboard`; zie "KNLTB-aanvullingen (akkoord PO 2026-09-28) — statistieken & ELO-gamesaldo" onderaan. **"Sprint-status"-sectie** op de admin-configpagina: dat is projectmanagement-informatie uit CLAUDE.md, geen app-data — bewust weggelaten i.p.v. hardcoded/nep-content in de live app te zetten.
 
 ### Nieuwe pagina `/info`
 **Wat:** statische uitlegpagina (ladder, tiers, multi-duo, challenges, ELO-rating in eenvoudige taal, forfeit, disputes, beschikbaarheid) — op expliciet verzoek. Geen bestaande functionaliteit geraakt.
@@ -285,3 +286,53 @@ Vier door de PO goedgekeurde uitbreidingen na de v1-scope. UI bewust functioneel
 - `.eslintrc.json` heeft nu `"root": true`, zodat ESLint in een geneste git-worktree niet ook de config van de bovenliggende checkout laadt (gaf een plugin-conflict). Geen gedragswijziging in de hoofd-checkout.
 - `playwright.config.ts`: Chromium start met `--disable-dev-shm-usage`. De devcontainer heeft maar 64 MB `/dev/shm`; onder geheugendruk (meerdere agents/dev-servers tegelijk) crashte Chromium sporadisch ("Target crashed"/"Page crashed") bij de specs met meerdere browsercontexts.
 - Nieuwe/uitgebreide e2e-tests: `04-disputes` (overturned → nieuwe score → bevestigen → ELO), `05-availability-and-admin` (vrij blok toevoegen/bewerken/verwijderen door beide leden), `07-admin-users` (promoveren/degraderen, laatste-admin-regel, 403 voor een gewone gebruiker). Let op: de replay-test in `04` wijzigt de rating van Global Gladiators (onderste ladderrij); `01-ladder` draait in de volledige suite eerder (alfabetische volgorde, `workers: 1`).
+
+---
+
+## KNLTB-aanvullingen (akkoord PO 2026-09-28) — statistieken & ELO-gamesaldo
+
+Geen schemawijziging en geen migratie (die lopen via het parallelle schema-werk). Alleen lib/services/API/tests/docs; de UI wordt door de redesign opgepakt.
+
+### A. Gamesaldo in de ELO-formule
+**Wat:** K wordt geschaald met een margin-of-victory-multiplier `M = M_min + (M_max − M_min) · m`, met `m = (G_w − G_l)/(G_w + G_l)` begrensd tot [0, 1]; games volgens de KNLTB-telling (match-tiebreak = één set en 1-0 in games). Volledige formule, rationale en rekenvoorbeeld: `ELO_Algoritme.md` §2bis. Code: `src/lib/elo/gameMargin.ts`, `applyMatchResult` (optionele `games`/`marginConfig`), `summarizeScore` in `src/lib/match/score.ts`, `finalizeMatch` in `matchService`.
+**Keuzes:**
+- Multiplier op K i.p.v. een marge-afhankelijke `S` in [0.5, 1]: met `S < 1` kan een favoriet die nipt wint punten verliezen. Nu wint de winnaar altijd (≥ +1) en verliest de verliezer altijd (≤ −1).
+- Symmetrisch afronden (half van nul af) i.p.v. `Math.round` → exact zero-sum bij gelijke K. Kleine gedragswijziging t.o.v. v1 bij delta's van precies x.5 (verliezer −8 i.p.v. −7).
+- Minimaal 1 punt winst/verlies (voorheen kon een extreme favoriet +0 krijgen).
+- `RatingHistory.k_factor` = effectief toegepaste K (status-K × demping × M, afgerond) — de multiplier zelf wordt niet apart opgeslagen (geen kolom), maar is uit `score_raw` + de config te herleiden.
+- Idempotentie/transactionaliteit ongewijzigd: de multiplier wordt vóór de transactie berekend (zoals percentiel en demping), de CAS op de matchstatus bewaakt dubbele verwerking.
+- Geen herberekening van historische matches: oude `RatingHistory`-rijen blijven zoals ze zijn; het gamesaldo geldt voor matches die vanaf deze release bevestigd worden.
+
+### B. Afgeleide statistieken
+**Wat:** per duo W-L, huidige reeks (`W3`/`L2`), set- en gamesaldo, betrouwbaarheid ("X/Y challenges gespeeld"), inactief-vlag; wedstrijdhistorie en onderling resultaat. Puur in `src/lib/stats/*` (unit tests in `tests/unit/stats`), queries in `src/server/services/statsService.ts`.
+**Definities (productkeuzes):**
+- **W-L/reeks/saldo's:** uitsluitend bevestigde matches (`match.status = completed`). Forfeits zijn géén gespeelde wedstrijden en tellen niet als verlies (**gedragswijziging:** de oude ladderberekening telde een forfeit-penalty als verlies en leidde winst af uit het teken van de rating-delta). Een walkover/opgave die als synthetische score wordt vastgelegd, telt wél mee als match. Chronologie op `submitted_at` (≈ speeldatum), niet op `confirmed_at`.
+- **Set-/gamesaldo:** KNLTB-telling, identiek aan de ELO-telling (`summarizeScore`).
+- **Betrouwbaarheid:** X = challenges van het duo met status `completed`; Y = X + aan het duo toe te rekenen forfeits: `unplayed_timeout` (beide duo's, behalve het duo dat via een `resolved_overturned` forfeit-dispute is vrijgepleit — herkend aan zijn correctie-record) en `expired` (alleen de uitgedaagde). Niet meegeteld: `declined`, lopende challenges, `expired` voor de uitdager. `percentage` = afgerond, `null` bij Y = 0.
+- **Inactief:** laatste activiteit = max(duo aangemaakt, laatste bevestigde match, laatste zelf verstuurde challenge, laatste geaccepteerde challenge) ligt strikt meer dan `inactive_after_days` (default 60) dagen terug. Passief uitgedaagd worden of een forfeit krijgen telt niet als activiteit.
+- **Historie:** bevestigde matches, voided matches (label, delta 0) en forfeits (reden `expired`/`unplayed_timeout`, `forfeitCorrected`), nieuwste eerst. De rating-delta is de **som** van alle `RatingHistory`-rijen van die match/challenge (penalty + correctie). Lopende matches (awaiting_confirmation/disputed) staan er niet in.
+- **Onderling resultaat:** alleen bevestigde matches tussen precies deze twee duo's (beide uitdaag-richtingen); forfeits tellen niet als ontmoeting.
+- **Streak zonder matches** blijft `"—"` (bestaand ladder-contract); `streakDetail` is de gestructureerde variant (`null` zonder matches).
+
+**API (additief):**
+- `GET /api/ladder` (publiek, ongewijzigd) en `GET /api/dashboard` (ingelogd): elke ladderrij resp. `duos[].duo` krijgt `wins, losses, streak, streakDetail, setDifference, gameDifference, reliability, inactive, lastActivityAt`.
+- Nieuw `GET /api/duos/[id]/matches?page=&pageSize=` (page ≥ 1, pageSize 1–100, default 20) en `GET /api/duos/[id]/head-to-head/[otherId]`: ingelogd vereist, geen lidmaatschap (zelfde regel als `/rating-history`). zod-validatie (uuid's, `id ≠ otherId`) → `400 invalid_input`; onbekend duo → `404 duo_not_found`. Alleen duo-id's/-namen, geen e-mail of user-id's.
+**Performance:** ladder/dashboard gebruiken voor álle duo's samen twee extra queries (bevestigde matches + één geaggregeerde challenge-/forfeit-query met `GROUP BY`), geen N+1. `finalizeMatch` gebruikt nu `getLadderPositions` (zonder statistieken) voor het percentiel.
+
+**Restrisico's:**
+- De ladder leest alle bevestigde matches van de regio-duo's in het geheugen (scores moeten geparsed worden). Prima tot tienduizenden matches per regio; daarna materialiseren of in SQL aggregeren (schemawijziging/view).
+- De historie pagineert in het geheugen (alle matches/forfeits van één duo worden gelezen); bij honderden wedstrijden per duo geen probleem.
+- De rijen in de nieuwe routes zijn niet gecachet; bij veel verkeer op de publieke ladder is een korte cache (zoals bij `platform_config`) een optie.
+- `inactive` is puur informatief; er is (nog) geen gedrag aan gekoppeld (bijv. verbergen of afwaarderen).
+
+### Nog toe te voegen `platform_config`-rijen (volgende migratie)
+De code leest deze keys via `getConfigNumberOrDefault` (nieuw in `platformConfigRepository`) en valt terug op de gedocumenteerde default zolang de rij ontbreekt; een aanwezige maar ongeldige waarde blijft een harde fout. Toe te voegen in de eerstvolgende migratie (data-only):
+
+```sql
+INSERT INTO "platform_config" (key, value, description) VALUES
+    ('elo_margin_multiplier_min', '0.75', 'ELO-gamesaldo: K-multiplier bij de kleinste marge (m = 0); moet > 0 zijn'),
+    ('elo_margin_multiplier_max', '1.5', 'ELO-gamesaldo: K-multiplier bij de grootste marge (m = 1, bijv. 6-0 6-0); moet >= min zijn'),
+    ('inactive_after_days', '60', 'Dagen zonder eigen activiteit waarna een duo als inactief wordt gemarkeerd')
+ON CONFLICT (key) DO NOTHING;
+```
+

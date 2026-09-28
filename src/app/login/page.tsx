@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/client/api";
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const hydrated = useHydrated();
 
   useEffect(() => {
     if (getStoredToken()) {
@@ -70,7 +72,7 @@ export default function LoginPage() {
           />
         </div>
         {error && <p style={{ color: "var(--color-accent-700)", fontSize: 13, marginBottom: 16 }}>{error}</p>}
-        <button type="submit" disabled={submitting} className="btn btn-primary btn-block">
+        <button type="submit" disabled={submitting || !hydrated} className="btn btn-primary btn-block">
           {submitting ? "Bezig..." : "Inloggen"}
         </button>
       </form>

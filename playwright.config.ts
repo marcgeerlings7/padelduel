@@ -12,6 +12,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1, // gedeelde test-database: sequentieel om data-races te voorkomen
   retries: 0,
+  // Dev-server compileert routes on-demand; met de UI-kit (Tailwind v4,
+  // shadcn, Motion, charts) duurt een eerste compile soms >30s.
+  timeout: 60_000,
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:3100",
@@ -23,6 +26,9 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        // Na de spread: anders overschrijft "Desktop Chrome" (1280×720) de
+        // mobile-first viewport uit `use` hierboven.
+        viewport: { width: 390, height: 844 },
         // De devcontainer heeft maar 64 MB /dev/shm; Chromium crasht daardoor
         // sporadisch ("Target crashed") bij meerdere gelijktijdige contexts.
         launchOptions: { args: ["--disable-dev-shm-usage"] },
