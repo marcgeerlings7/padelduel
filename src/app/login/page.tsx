@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useHydrated } from "@/lib/client/useHydrated";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { CircleAlert, Loader2 } from "lucide-react";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken, setStoredToken } from "@/lib/client/session";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +20,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const hydrated = useHydrated();
+  const id = useId();
+  const errorId = `${id}-error`;
 
   useEffect(() => {
     if (getStoredToken()) {
@@ -42,67 +49,77 @@ export default function LoginPage() {
 
   return (
     <AuthLayout>
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 8px" }}>
-        Inloggen
-      </h1>
-      <p style={{ margin: "0 0 28px", color: "var(--color-neutral-700)", fontSize: 14 }}>
-        Nog geen account? <Link href="/register">Account aanmaken</Link>.
-      </p>
-      <form onSubmit={handleSubmit}>
-        <div className="field" style={{ marginBottom: 16 }}>
-          <label>E-mailadres</label>
-          <input
-            className="input"
+      <header className="flex flex-col gap-2">
+        <h1 className="font-display text-[2.5rem] leading-[0.95] font-bold tracking-tight">Inloggen</h1>
+        <p className="text-muted-foreground">
+          Nog geen account?{" "}
+          <Link href="/register" className="font-semibold text-primary underline-offset-4 hover:underline">
+            Account aanmaken
+          </Link>
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-email`}>E-mailadres</Label>
+          <Input
+            id={`${id}-email`}
             type="email"
+            name="email"
+            autoComplete="email"
+            inputMode="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="jij@padel.nl"
+            placeholder="jij@voorbeeld.nl"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
-        <div className="field" style={{ marginBottom: 24 }}>
-          <label>Wachtwoord</label>
-          <input
-            className="input"
-            type="password"
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-password`}>Wachtwoord</Label>
+          <PasswordInput
+            id={`${id}-password`}
+            name="password"
+            autoComplete="current-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
-        {error && <p style={{ color: "var(--color-accent-700)", fontSize: 13, marginBottom: 16 }}>{error}</p>}
-        <button type="submit" disabled={submitting || !hydrated} className="btn btn-primary btn-block">
-          {submitting ? "Bezig..." : "Inloggen"}
-        </button>
+
+        {error ? (
+          <div
+            id={errorId}
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-loss/30 bg-loss-soft px-3 py-2.5 text-sm text-loss"
+          >
+            <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </div>
+        ) : null}
+
+        <Button type="submit" size="lg" disabled={submitting || !hydrated} className="mt-1 w-full">
+          {submitting ? (
+            <>
+              <Loader2 aria-hidden className="animate-spin" />
+              Bezig…
+            </>
+          ) : (
+            "Inloggen"
+          )}
+        </Button>
       </form>
 
-      <div
-        className="card"
-        style={{ borderRadius: 0, marginTop: 16, padding: "12px 16px", background: "var(--color-neutral-100)" }}
-      >
-        <p
-          style={{
-            margin: "0 0 4px",
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "var(--color-neutral-600)",
-          }}
-        >
-          Testaccount
+      <aside aria-label="Testaccount" className="rounded-lg border border-dashed px-4 py-3 text-sm">
+        <p className="font-semibold">Testaccount</p>
+        <p className="mt-0.5 text-muted-foreground">
+          <span className="tabular">user1@example.com</span> met wachtwoord{" "}
+          <code className="rounded-sm bg-muted px-1 py-0.5 text-[0.8125rem] text-foreground">PadelTest123!</code>
         </p>
-        <p style={{ margin: 0, fontSize: 13 }}>
-          user1@example.com / <code>PadelTest123!</code>
-        </p>
-      </div>
-
-      <div className="hr" style={{ margin: "28px 0" }} />
-      <div className="flex flex-wrap gap-2">
-        <span className="tag tag-neutral">Multi-duo ondersteund</span>
-        <span className="tag tag-outline">ELO-rating</span>
-      </div>
+      </aside>
     </AuthLayout>
   );
 }
