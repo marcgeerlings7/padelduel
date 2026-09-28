@@ -29,6 +29,32 @@ export async function getConfigNumber(key: string): Promise<number> {
   return parsed;
 }
 
+/**
+ * Als getConfigNumber, maar met een gedocumenteerde fallback voor keys
+ * waarvan de platform_config-rij (nog) niet door een migratie is
+ * aangemaakt (zie Technical_Debt.md, "KNLTB-aanvullingen"). Een
+ * ontbrekende rij levert `defaultValue` op; een AANWEZIGE maar ongeldige
+ * waarde blijft een harde fout (stil terugvallen zou een typefout van een
+ * admin maskeren). Ook de fallback wordt gecachet, zodat een ontbrekende
+ * rij niet bij elk request een extra query kost.
+ */
+export async function getConfigNumberOrDefault(key: string, defaultValue: number): Promise<number> {
+  const cached = cache.get(key);
+  let value: string;
+  if (cached && cached.expiresAt > Date.now()) {
+    value = cached.value;
+  } else {
+    const row = await prisma.platformConfig.findUnique({ where: { key } });
+    value = row ? row.value : String(defaultValue);
+    cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+  const parsed = Number(value);
+  if (value.trim() === "" || Number.isNaN(parsed)) {
+    throw new Error(`platform_config['${key}'] is geen geldig getal: ${value}`);
+  }
+  return parsed;
+}
+
 /** Uitsluitend voor tests: leegt de config-cache. */
 export function __clearConfigCacheForTests(): void {
   cache.clear();

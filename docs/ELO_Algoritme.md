@@ -31,6 +31,57 @@ Waarbij:
 - `S_A` = 1 als duo A wint, 0 als duo A verliest (padel kent geen gelijkspel op wedstrijdniveau)
 - `K_A`, `K_B` = de K-factor van het betreffende duo (zie §3, kan per duo verschillen)
 
+> Sinds de KNLTB-aanvullingen (akkoord PO 2026-09-28) wordt de K-factor bovendien geschaald met een **gamesaldo-multiplier** `M` — zie §2bis. `S` blijft 1/0.
+
+## 2bis. Gamesaldo in de ELO-formule (KNLTB-aanvulling, akkoord PO 2026-09-28)
+
+De KNLTB telt sinds 2025 gewonnen/verloren games mee; Playtomic weegt de marge. Een 6-0 6-0 zegt meer over het niveauverschil dan een 7-6 6-7 10-8. Daarom:
+
+```
+G_w, G_l = games van winnaar/verliezer (KNLTB-telling, zie hieronder)
+m        = (G_w - G_l) / (G_w + G_l), begrensd tot [0, 1]      (genormaliseerd gamesaldo)
+M        = M_min + (M_max - M_min) * m                           (lineair, monotoon stijgend)
+
+Δ_w = +max(1, round( clamp( K_w * D * M * (1 - E_w), ±cap ) ))
+Δ_l = -max(1, round( clamp( K_l * D * M * E_l,       ±cap ) ))
+```
+
+- `D` = herhaalde-tegenstander-demping (0.5 of 1, §6.2), `cap` = rating-cap (50, §6.1).
+- `round` = symmetrisch afronden (half van nul af), zodat +7.5/−7.5 als +8/−8 uitkomen.
+- **KNLTB-telling:** gewone sets tellen hun games; een match-tiebreak/super-tiebreak (een "set" met ≥ 10 punten, bijv. `10-8`) telt als **één gewonnen set en 1-0 in games** — de tiebreakpunten zijn geen games. Implementatie: `summarizeScore` in `src/lib/match/score.ts` (gedeeld met de statistieken).
+- Een winnaar met minder games dan de verliezer (bijv. `0-6 7-6 10-8` → 8-12 games) krijgt `m = 0` → `M = M_min`: de winst telt volledig, alleen zonder margebonus.
+
+**Parameters** (`platform_config`, met fallback-default in `src/lib/elo/gameMargin.ts` zolang de rijen nog niet via een migratie bestaan):
+
+| Key | Default | Betekenis |
+|---|---|---|
+| `elo_margin_multiplier_min` | `0.75` | `M` bij de kleinste marge (m = 0). Moet > 0 zijn. |
+| `elo_margin_multiplier_max` | `1.5` | `M` bij de grootste marge (m = 1, 6-0 6-0). Moet ≥ min zijn. |
+
+Met `min = max = 1` is het gamesaldo uitgeschakeld (klassieke ELO). Een ongeldige combinatie (min ≤ 0, max < min) laat de matchverwerking falen vóór er iets geschreven wordt (liever geen verwerking dan een winnaar die punten verliest).
+
+**Waarom deze vorm (en niet een marge-afhankelijke `S` in [0.5, 1]):**
+1. **Winnaar wint altijd, verliezer verliest altijd.** Met `S_w < 1` zou een favoriet die nipt wint (bijv. `S = 0.55`, `E = 0.64`) punten *verliezen*. Met een multiplier op K blijft `(1 − E_w) > 0` en `E_l > 0`; `M > 0` verandert alleen de grootte. Een minimum van 1 punt vangt de afronding naar 0 bij extreme ratingverschillen af.
+2. **Zero-sum.** Beide duo's krijgen dezelfde `M`; bij gelijke K-factor (de normale situatie binnen één tier) is `Δ_w + Δ_l = 0` exact, ook na afronding. Verschillende K-factoren (provisional vs. established) waren al niet zero-sum en blijven dat niet.
+3. **Begrensd.** `M ∈ [M_min, M_max]`, en de bestaande cap van ±50 blijft gelden.
+4. **Monotoon.** Meer gamesaldo geeft nooit minder winst of minder verlies.
+5. **Neutraal ijkpunt.** Met de defaults geeft `6-3 6-3` (m = 1/3) exact `M = 1.0` = de oude uitkomst; een "gewone" zege verandert dus nauwelijks, alleen de uitschieters wegen zwaarder/lichter.
+
+**Rekenvoorbeeld** (twee established duo's, K = 24, beide 1200 → `E = 0.5`):
+
+| Uitslag | Games (KNLTB) | m | M | Δ winnaar / verliezer |
+|---|---|---|---|---|
+| 6-0 6-0 | 12-0 | 1 | 1.5 | 24·1.5·0.5 = 18 → **+18 / −18** |
+| 6-3 6-3 | 12-6 | 0.333 | 1.0 | 12 → **+12 / −12** (klassiek) |
+| 6-4 6-4 | 12-8 | 0.2 | 0.9 | 10.8 → **+11 / −11** |
+| 7-6 6-7 10-8 | 14-13 | 0.037 | 0.778 | 9.33 → **+9 / −9** |
+
+Met een ratingverschil (winnaar 1250, verliezer 1180 → `E_w ≈ 0.60`), 6-2 6-2 (m = 0.5, M = 1.125): `Δ = 24·1.125·0.40 ≈ 10.8` → +11 / −11.
+
+`RatingHistory.k_factor` bevat de **effectief toegepaste K** (`K · D · M`, afgerond), zodat `rating_after − rating_before ≈ k_factor · (S − E)` herleidbaar blijft.
+
+**Forfeits** (`expired`/`unplayed_timeout`) lopen hier nooit doorheen: die blijven een vaste penalty (§8bis). Een walkover/opgave die als (synthetische) score wordt vastgelegd, loopt wél door deze formule; de marge volgt dan uit die synthetische score.
+
 ## 3. K-factor beleid
 
 Een vaste K-factor voor alle duo's leidt tot te trage convergentie voor nieuwe duo's en te grote schommelingen voor gevestigde duo's. Daarom een **gelaagd K-factor beleid**:
@@ -89,6 +140,8 @@ function applyMatchResult(
   return { winnerNewRating, loserNewRating };
 }
 ```
+
+> De pseudocode hierboven is de oorspronkelijke v1-referentie. De actuele implementatie (`src/lib/elo/applyMatchResult.ts`) schaalt K daarnaast met demping en de gamesaldo-multiplier (§2bis), past de cap toe en rondt symmetrisch af met een minimum van 1 punt.
 
 **Verwerkingsvolgorde bij een voltooide match (transactioneel):**
 
@@ -166,3 +219,4 @@ Het algoritme moet volledig **los van de database** getest kunnen worden (pure f
 - `applyForfeitPenalty` verlaagt de rating met exact de geconfigureerde penalty en gaat nooit onder 0.
 - Bij `expired` krijgt uitsluitend de uitgedaagde duo een penalty; de uitdager blijft ongewijzigd.
 - Bij `unplayed_timeout` krijgen beide duo's dezelfde penalty, tenzij een dispute-resolutie de schuld eenzijdig toewijst.
+- Gamesaldo (§2bis, `tests/unit/elo/gameMargin.test.ts`): zero-sum en symmetrie bij gelijke K, monotonie in de marge, 6-0 6-0 > 6-4 6-4 > 7-6 6-7 10-8, 6-3 6-3 = klassieke uitkomst, winnaar altijd ≥ +1 en verliezer ≤ −1, begrenzing door M_max en de cap, config-validatie, forfeits ongemoeid.
