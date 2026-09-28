@@ -52,10 +52,31 @@ if [ "$REGION_COUNT" = "0" ]; then
   npx tsx scripts/seed.ts >/dev/null 2>&1
 fi
 
+# --- 3b. Playwright-browser (voor `npm run test:e2e`) ---
+# `npm install` installeert alleen het npm-pakket, NIET de browser-binaries
+# (~/.cache/ms-playwright) en de benodigde systeem-libraries. Die staan
+# buiten /workspaces en zijn dus na elke rebuild weg.
+if ! ls "$HOME"/.cache/ms-playwright/chromium-* >/dev/null 2>&1; then
+  echo "[start] Playwright Chromium installeren..."
+  npx playwright install --with-deps chromium >/dev/null 2>&1 \
+    || echo "[start] Playwright-installatie mislukt — draai handmatig: npx playwright install --with-deps chromium"
+fi
+
 # --- 4. Dev-server starten (indien nog niet actief) ---
 if ! pgrep -f "next dev" >/dev/null; then
   nohup npm run dev > /tmp/padel-ladder-dev.log 2>&1 &
   disown
+fi
+
+# --- 4b. Claude Code CLI (idempotent) ---
+# De VS Code-extensie komt via customizations.vscode.extensions; de
+# `claude`-CLI voor de terminal installeren we hier. Inloggen blijft
+# een eenmalige handmatige stap (`claude` → /login), tenzij er een
+# Codespaces-secret CLAUDE_CODE_OAUTH_TOKEN is ingesteld.
+if ! command -v claude >/dev/null 2>&1; then
+  npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 \
+    && echo "[start] Claude Code CLI geïnstalleerd ($(claude --version 2>/dev/null))" \
+    || echo "[start] Claude Code CLI-installatie mislukt — draai: npm install -g @anthropic-ai/claude-code"
 fi
 
 # --- 5. Vercel CLI: installeren (idempotent) + inlog-status checken ---

@@ -35,10 +35,12 @@ export async function GET(request: NextRequest) {
 
   const regionSlug = request.nextUrl.searchParams.get("region") ?? undefined;
   const dayOfWeekParam = request.nextUrl.searchParams.get("dayOfWeek");
-  const dayOfWeek = dayOfWeekParam !== null ? Number(dayOfWeekParam) : undefined;
-  if (dayOfWeek !== undefined && (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6)) {
-    return jsonError("dayOfWeek moet tussen 0 en 6 liggen.", 400, "invalid_input");
+  // Strikt één cijfer 0–6: `Number("")` zou anders stilletjes 0 (zondag) opleveren.
+  if (dayOfWeekParam !== null && !/^[0-6]$/.test(dayOfWeekParam)) {
+    await logApiCall(client.id, "/api/v1/availability", 400);
+    return jsonError("dayOfWeek moet een geheel getal tussen 0 en 6 zijn.", 400, "invalid_input");
   }
+  const dayOfWeek = dayOfWeekParam !== null ? Number(dayOfWeekParam) : undefined;
 
   const availability = await getPublicAvailability(client, { regionSlug, dayOfWeek });
   await logApiCall(client.id, "/api/v1/availability", 200);

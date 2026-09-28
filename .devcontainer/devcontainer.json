@@ -19,5 +19,19 @@
       "onAutoForward": "silent"
     }
   },
+  "customizations": {
+    "vscode": {
+      // Worden bij het aanmaken van de Codespace automatisch geïnstalleerd
+      // (voorheen alleen via persoonlijke Settings Sync, dus niet gegarandeerd).
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-playwright.playwright",
+        "prisma.prisma",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint",
+        "vitest.explorer"
+      ]
+    }
+  },
   "postStartCommand": "bash .devcontainer/start.sh"
 }

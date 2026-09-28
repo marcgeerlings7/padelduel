@@ -20,6 +20,12 @@ export async function authenticateApiKey(plaintextKey: string): Promise<Authenti
   const keyHash = hashApiKey(plaintextKey);
   const client = await prisma.apiClient.findUnique({ where: { apiKeyHash: keyHash } });
   if (!client || !client.isActive) {
+    // Een ingetrokken key hoort bij een bekende client en wordt dus ook
+    // gelogd (US-H5: elke aanroep). Een volledig onbekende key valt aan
+    // geen client toe te schrijven en wordt niet gelogd.
+    if (client) {
+      await logApiCall(client.id, "/api/v1/availability", 401);
+    }
     throw new ExternalApiError("Ongeldige of ingetrokken API-key.", "invalid_api_key", 401);
   }
   return { id: client.id, regionId: client.regionId };

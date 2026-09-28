@@ -152,6 +152,10 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 ### Voided-match-doodlopende-weg (herhaling vanuit Sprint 4) blijft ongewijzigd
 Zie "Na Sprint 4" hierboven — niet opnieuw aangepakt in Sprint 5, buiten scope.
 
+### Logging van mislukte externe-API-aanroepen (sprint-review-fix)
+**Wat:** tijdens de sprint-review bleek dat aanroepen met een ingetrokken key (401) en met een ongeldige `dayOfWeek` (400) niet gelogd werden, terwijl US-H5 "elke aanroep" vraagt. Beide worden nu gelogd bij de betreffende client. `?dayOfWeek=` (leeg) of `1.5` gaf voorheen stilletjes zondag/een lege lijst terug; nu `400`.
+**Bewuste grens:** een volledig onbekende key valt aan geen enkele `ApiClient` toe te schrijven en wordt daarom niet gelogd (de audit-log is per client).
+
 ### v1-scope compleet
 Met Sprint 5 is de volledige v1-scope uit de PRD (Sprint 1 t/m 5) functioneel gebouwd. Openstaande, met opzet niet zelf ingevulde PRD-open-vragen (§14) — rating-tier-breedte, forfeit-penalty-hoogte, max-aantal-duo's, exacte deadlines — staan nog op de richtwaarden uit de documenten; dit is een bewuste keuze (niet zelf besluiten wat een productbeslissing is), geen omissie.
 

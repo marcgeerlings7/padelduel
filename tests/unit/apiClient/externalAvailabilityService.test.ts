@@ -61,6 +61,30 @@ describe("authenticateApiKey", () => {
       code: "invalid_api_key",
     });
   });
+
+  it("logt een aanroep met een ingetrokken key als 401 bij die client (US-H5)", async () => {
+    mockPrisma.apiClient.findUnique.mockResolvedValueOnce({
+      id: "client-1",
+      apiKeyHash: hashApiKey("padel_live_ingetrokken"),
+      isActive: false,
+      regionId: null,
+    });
+    await expect(authenticateApiKey("padel_live_ingetrokken")).rejects.toMatchObject({
+      httpStatus: 401,
+    });
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityId: "client-1",
+        payload: { endpoint: "/api/v1/availability", statusCode: 401 },
+      }),
+    });
+  });
+
+  it("logt niets bij een volledig onbekende key (geen client om aan toe te schrijven)", async () => {
+    mockPrisma.apiClient.findUnique.mockResolvedValueOnce(null);
+    await expect(authenticateApiKey("padel_live_onbekend")).rejects.toThrow();
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("enforceRateLimit", () => {
