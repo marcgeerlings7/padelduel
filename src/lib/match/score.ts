@@ -26,8 +26,37 @@ export function parseScore(scoreRaw: string): SetScore[] {
 }
 
 /**
+ * Een gewone set eindigt op 6-0 t/m 6-4, 7-5 of 7-6 (tiebreak bij 6-6).
+ * Een set met 10+ punten aan één kant geldt als super-tiebreak: minstens
+ * 10 punten en 2 verschil, en boven de 10 precies 2 verschil (12-10, niet 13-10).
+ */
+function validateSet({ challengerGames, challengedGames }: SetScore): void {
+  const label = `${challengerGames}-${challengedGames}`;
+  const winner = Math.max(challengerGames, challengedGames);
+  const loser = Math.min(challengerGames, challengedGames);
+
+  if (winner >= 10) {
+    const diff = winner - loser;
+    if (diff < 2 || (winner > 10 && diff !== 2)) {
+      throw new InvalidScoreError(
+        `Ongeldige tiebreak-score ${label}: een tiebreak wordt gewonnen met 2 punten verschil.`,
+      );
+    }
+    return;
+  }
+
+  const isValidRegularSet =
+    (winner === 6 && loser <= 4) || (winner === 7 && (loser === 5 || loser === 6));
+  if (!isValidRegularSet) {
+    throw new InvalidScoreError(
+      `Ongeldige setscore ${label}: een set eindigt op 6-0 t/m 6-4, 7-5 of 7-6.`,
+    );
+  }
+}
+
+/**
  * Valideert dat de sets een eenduidige winnaar opleveren: 2 of 3 sets,
- * geen gelijkspel per set, en de winnaar heeft strikt meer sets gewonnen.
+ * elke set een geldige eindstand, en de winnaar heeft strikt meer sets gewonnen.
  */
 export function validateSets(sets: SetScore[]): void {
   if (sets.length < 2 || sets.length > 3) {
@@ -40,6 +69,7 @@ export function validateSets(sets: SetScore[]): void {
     if (set.challengerGames < 0 || set.challengedGames < 0) {
       throw new InvalidScoreError("Games per set kunnen niet negatief zijn.");
     }
+    validateSet(set);
   }
   const challengerSets = sets.filter((s) => s.challengerGames > s.challengedGames).length;
   const challengedSets = sets.length - challengerSets;

@@ -4,6 +4,17 @@
 set -uo pipefail
 cd /workspaces/padelduel || exit 0
 
+# --- 0. .env (gitignored) aanmaken als die ontbreekt, met verse secrets ---
+if [ ! -f .env ]; then
+  # JOBS_SECRET en CRON_SECRET moeten gelijk zijn (zie .env.example);
+  # JWT_SECRET krijgt een eigen waarde.
+  rand_hex() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+  JOBS=$(rand_hex)
+  sed -E -e "/^JWT_SECRET=/s/change-me-to-a-random-secret/$(rand_hex)/" \
+         -e "s/change-me-to-a-random-secret/$JOBS/" .env.example > .env
+  echo "[start] .env aangemaakt op basis van .env.example"
+fi
+
 # --- 1. Lokale Postgres-container (dev-database) ---
 if docker ps --format '{{.Names}}' | grep -qx padel-ladder-db; then
   : # draait al

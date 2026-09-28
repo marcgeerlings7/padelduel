@@ -1,6 +1,10 @@
 {
   "name": "Padel Ladder",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  // Expliciete Node 20-image i.p.v. `universal:2`: die herstartte niet meer
+  // ("unable to find user codespace") waardoor Codespaces steeds in een
+  // kale Alpine-recovery-container eindigde (geen node/docker/postgres).
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+  "remoteUser": "node",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
