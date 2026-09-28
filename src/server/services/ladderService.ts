@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getTier } from "@/lib/elo";
+import { DuoStatsSummary, toDuoStatsSummary } from "@/lib/stats";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { getDuoStats } from "@/server/services/statsService";
 
-export type LadderEntry = {
+export type LadderPosition = {
   id: string;
   name: string;
   regionId: string;
@@ -10,58 +12,17 @@ export type LadderEntry = {
   createdAt: Date;
   position: number;
   tier: number;
-  wins: number;
-  losses: number;
-  streak: string;
 };
 
-type RawLadderEntry = Omit<LadderEntry, "tier" | "wins" | "losses" | "streak">;
-
-type RecordStats = { wins: number; losses: number; streak: string };
-
 /**
- * W-L-record en streak zijn, net als positie en tier, AFGELEID —
- * berekend uit RatingHistory (niet apart bijgehouden). Een entry telt
- * als winst wanneer ratingAfter > ratingBefore en het geen forfeit is
- * (bij een echte ELO-verwerking is de winnaar-delta per definitie
- * positief, de verliezer-delta negatief — zie ELO_Algoritme.md). Een
- * forfeit-penalty telt altijd als verlies.
+ * Ladderrij incl. afgeleide statistieken (zie statsService/src/lib/stats).
+ * `wins`/`losses`/`streak` bestonden al; sinds de KNLTB-aanvullingen
+ * tellen daarin uitsluitend BEVESTIGDE matches (voorheen telde een
+ * forfeit-penalty als verlies — forfeits zitten nu in `reliability`).
  */
-async function getRecordsAndStreaks(duoIds: string[]): Promise<Map<string, RecordStats>> {
-  if (duoIds.length === 0) return new Map();
+export type LadderEntry = LadderPosition & DuoStatsSummary;
 
-  const historyRows = await prisma.ratingHistory.findMany({
-    where: { duoId: { in: duoIds } },
-    orderBy: { createdAt: "asc" },
-    select: { duoId: true, isForfeit: true, ratingBefore: true, ratingAfter: true },
-  });
-
-  const resultsByDuo = new Map<string, boolean[]>();
-  for (const h of historyRows) {
-    const won = !h.isForfeit && h.ratingAfter > h.ratingBefore;
-    const arr = resultsByDuo.get(h.duoId) ?? [];
-    arr.push(won);
-    resultsByDuo.set(h.duoId, arr);
-  }
-
-  const stats = new Map<string, RecordStats>();
-  for (const duoId of duoIds) {
-    const results = resultsByDuo.get(duoId) ?? [];
-    const wins = results.filter(Boolean).length;
-    const losses = results.length - wins;
-
-    let streak = "—";
-    if (results.length > 0) {
-      const last = results[results.length - 1];
-      let count = 0;
-      for (let i = results.length - 1; i >= 0 && results[i] === last; i--) count++;
-      streak = `${last ? "W" : "L"}${count}`;
-    }
-
-    stats.set(duoId, { wins, losses, streak });
-  }
-  return stats;
-}
+type RawLadderEntry = Omit<LadderPosition, "tier">;
 
 /**
  * Ladderpositie is een AFGELEIDE waarde (FR-3.3), berekend via een SQL
@@ -73,7 +34,7 @@ async function getRecordsAndStreaks(duoIds: string[]): Promise<Map<string, Recor
  * Rating-tier (FR-3.5/FR-4.2) is eveneens afgeleid — floor(rating /
  * tier_size) — nooit een kolom.
  */
-export async function getLadder(regionId: string): Promise<LadderEntry[]> {
+export async function getLadderPositions(regionId: string): Promise<LadderPosition[]> {
   const [rows, tierSize] = await Promise.all([
     prisma.$queryRaw<RawLadderEntry[]>`
       SELECT
@@ -90,10 +51,15 @@ export async function getLadder(regionId: string): Promise<LadderEntry[]> {
     getConfigNumber("rating_tier_size"),
   ]);
 
-  const stats = await getRecordsAndStreaks(rows.map((row) => row.id));
+  return rows.map((row) => ({ ...row, tier: getTier(row.currentRating, tierSize) }));
+}
 
-  return rows.map((row) => {
-    const s = stats.get(row.id) ?? { wins: 0, losses: 0, streak: "—" };
-    return { ...row, tier: getTier(row.currentRating, tierSize), ...s };
-  });
+/**
+ * Ladder incl. W-L, reeks, saldo's, betrouwbaarheid en inactief-vlag voor
+ * ALLE duo's van de regio — in twee extra geaggregeerde queries (geen N+1).
+ */
+export async function getLadder(regionId: string): Promise<LadderEntry[]> {
+  const positions = await getLadderPositions(regionId);
+  const stats = await getDuoStats(positions.map((p) => ({ id: p.id, createdAt: p.createdAt })));
+  return positions.map((p) => ({ ...p, ...toDuoStatsSummary(stats.get(p.id)!) }));
 }
