@@ -12,12 +12,14 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 **Risico:** Reset bij een herstart van de app; werkt niet correct zodra er meerdere app-instanties tegelijk draaien (elke instantie heeft zijn eigen telling).
 **Wanneer relevant:** Zodra er meer dan 1 instantie draait (horizontale schaling) of bij frequente herstarts in productie.
 **Mogelijke oplossing:** Vervangen door een gedeelde store (bijv. Redis) met dezelfde `checkRateLimit`/`recordFailedAttempt`/`resetRateLimit`-interface.
+**Opgelost (post-v1, 2026-09-28):** Postgres-backed via `audit_log` — geen Redis nodig; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### E-mailverzending is een dev-console-stub
 **Wat:** `src/lib/auth/email.ts` logt activatiemails naar de console i.p.v. ze echt te versturen.
 **Risico:** Activatie-/resend-flow werkt niet voor echte gebruikers buiten dev/QA.
 **Wanneer relevant:** Vóór een echte pilot-rollout (PRD §13).
 **Mogelijke oplossing:** PRD §14 heeft dit als openstaande vraag (welke provider). `sendEmail()` is bewust als losse, vervangbare functie opgezet zodat alleen die implementatie hoeft te wijzigen.
+**Opgelost (post-v1, 2026-09-28):** Resend-koppeling met console-fallback; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### Eén sessietoken, geen refresh-tokens
 **Wat:** Login geeft een enkel JWT (2 uur geldig) i.p.v. het in Bouwplan §2 genoemde access+refresh-tokenpaar.
@@ -128,14 +130,17 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 ### Voided match sluit de challenge blijvend af, zonder nieuwe score-poging
 **Wat:** bij `resolved_overturned` op een match-score-dispute wordt de match op `voided` gezet, maar de challenge zelf blijft op `accepted` staan. Omdat `match.challenge_id` uniek is, kan er nooit een nieuwe score voor diezelfde challenge ingediend worden — er is geen "opnieuw spelen"-pad.
 **Risico:** Laag/zeldzaam (disputes zijn een uitzondering), maar wel een échte doodlopende weg voor dat duo-paar totdat een nieuwe challenge wordt aangemaakt. Niet expliciet gevraagd in de Sprint4-AC's; bewust niet zelf een "heropen challenge"-flow verzonnen.
+**Opgelost (post-v1, 2026-09-28):** "opnieuw spelen" na een overturned dispute, met schemawijziging op `match.challenge_id` (akkoord PO); zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### Admin-account alleen via seed-script
 **Wat:** `admin@example.com` wordt aangemaakt door `scripts/seed.ts`, er is geen UI/flow om een gebruiker tot admin te promoveren.
 **Risico:** Geen voor de pilotschaal — bij een echte rollout moet er een manier komen om (extra) admins aan te wijzen buiten het seed-script om.
+**Opgelost (post-v1, 2026-09-28):** admin-UI `/admin/users` om admins aan te wijzen/in te trekken. De állereerste admin van een nieuwe (productie)omgeving moet nog steeds via de database/seed worden aangewezen; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### Admin-link in de navigatiebalk leest de rol uit een ongeverifieerd JWT-payload
 **Wat:** `getStoredRole()` decodeert het JWT client-side zonder handtekeningverificatie, puur om de "Admin"-link wel/niet te tonen.
 **Risico:** Geen — dit is nooit de autorisatiegrens (elke admin-API-route controleert `user.role` server-side opnieuw via het geverifieerde token). Een gemanipuleerd client-side token zou hooguit een onterecht zichtbare link geven, niet toegang tot data.
+**Aanvulling (post-v1, 2026-09-28):** admin-API-routes controleren de rol nu bovendien in de database (`requireAdmin`), zodat een gedegradeerde admin met een nog geldig token direct geen toegang meer heeft. De navigatielink leest nog steeds het JWT (tot opnieuw inloggen kan een gedegradeerde admin de link nog zien — de pagina toont dan "Alleen toegankelijk voor admins").
 
 ---
 
@@ -144,6 +149,7 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 ### Externe-API-ratelimiting is in-memory, per-instance
 **Wat:** `src/lib/apiClient/rateLimit.ts` (fixed-window) heeft dezelfde grens als de login-rate-limiter uit Sprint 1: reset bij herstart, niet gedeeld tussen meerdere instanties.
 **Risico:** Zelfde categorie als de bestaande login-rate-limiting-tech-debt. Bij opschalen naar meerdere instanties: vervangen door een gedeelde store (Redis).
+**Opgelost (post-v1, 2026-09-28):** telt nu de gelogde aanroepen in `audit_log` (gedeeld over instanties); zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### API-key-hashing met SHA-256 i.p.v. bcrypt (bewuste, afwijkende keuze)
 **Wat:** `src/lib/apiClient/apiKey.ts` gebruikt een snelle cryptografische hash (SHA-256) i.p.v. bcrypt (dat wél gebruikt wordt voor wachtwoorden).
@@ -151,6 +157,7 @@ Items worden **niet** verwijderd zodra ze zijn opgelost — voeg een `Opgelost:`
 
 ### Voided-match-doodlopende-weg (herhaling vanuit Sprint 4) blijft ongewijzigd
 Zie "Na Sprint 4" hierboven — niet opnieuw aangepakt in Sprint 5, buiten scope.
+**Opgelost (post-v1, 2026-09-28):** zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### Logging van mislukte externe-API-aanroepen (sprint-review-fix)
 **Wat:** tijdens de sprint-review bleek dat aanroepen met een ingetrokken key (401) en met een ongeldige `dayOfWeek` (400) niet gelogd werden, terwijl US-H5 "elke aanroep" vraagt. Beide worden nu gelogd bij de betreffende client. `?dayOfWeek=` (leeg) of `1.5` gaf voorheen stilletjes zondag/een lege lijst terug; nu `400`.
@@ -182,6 +189,7 @@ De eerdere restyling had alleen kleuren/componentklassen overgenomen, niet de da
 ### Beschikbaarheid: vaste tijdvakken (Ochtend/Middag/Avond) i.p.v. vrije tijdsblokken
 **Wat:** de mockup toont een weekrooster met 3 vaste dagdelen per dag, aan/uit te toggelen. Het echte datamodel (`DuoAvailability`) ondersteunt vrije start-/eindtijden. Om de mockup-indeling te volgen zijn 3 vaste tijdvakken gekozen (08:00–12:00 / 12:00–18:00 / 18:00–22:00); een klik op een cel maakt of verwijdert het bijbehorende blok via de bestaande API. Dit is een **bewuste beperking t.o.v. de oude UI** (niet meer élk tijdstip kiezen) ten gunste van de gevraagde lay-out-fidelity.
 **Risico:** Laag — de API/datamodel ondersteunen nog steeds vrije tijden; alleen deze UI legt zichzelf vast op 3 vakken. Als vrije tijden alsnog gewenst zijn, is dat een aparte productbeslissing.
+**Opgelost (post-v1, 2026-09-28):** vrije tijden + bewerken terug in de UI, rooster blijft als snelkeuze; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
 
 ### Nieuwe admin-pagina `/admin/platform-config` (+ endpoint `GET /api/admin/platform-config`)
 **Wat:** read-only overzicht van de `platform_config`-tabel, zoals in de mockup. Nieuw, want bestond nog niet.
@@ -213,6 +221,7 @@ Moeten in Vercel (Project Settings → Environment Variables) gezet worden — s
 - `APP_BASE_URL` — de productie-URL (bijv. `https://padelduel.vercel.app`), gebruikt om de activatielink in registratiemails op te bouwen.
 - `JOBS_SECRET` — willekeurige lange string, beveiligt de `/api/jobs/*`-endpoints.
 - `CRON_SECRET` — **exact dezelfde waarde als `JOBS_SECRET`.** Vercel Cron stuurt automatisch `Authorization: Bearer $CRON_SECRET` mee bij het aanroepen van een pad uit `vercel.json`; `isAuthorizedJobRequest` (`src/lib/auth/jobAuth.ts`) accepteert dat header-formaat naast de bestaande `x-job-secret`-header.
+- `RESEND_API_KEY` + `EMAIL_FROM` — *(post-v1)* voor echte e-mailverzending via Resend; zonder key worden activatiemails alleen gelogd (zie "Post-v1" onderaan).
 
 ### Database-migraties worden niet automatisch uitgevoerd tijdens de build
 **Wat:** de build draait bewust geen `prisma migrate deploy` (migraties tegen een productiedatabase horen niet stilzwijgend in elke build te gebeuren, en het buildproces heeft niet gegarandeerd netwerktoegang tot de gekozen hosting-Postgres).
@@ -224,3 +233,54 @@ Moeten in Vercel (Project Settings → Environment Variables) gezet worden — s
 ### E-mail wordt nog niet echt verstuurd
 **Wat:** `sendEmail` (`src/lib/auth/email.ts`) logt de activatielink alleen naar de servers-console (Vercel Function Logs) — er is nog geen echte provider gekoppeld (bewuste, nog niet ingevulde PRD-open-vraag, zie eerdere Sprint 1-notitie). Op Vercel betekent dit concreet: na registreren moet de activatielink even uit de Vercel Function Logs gehaald worden om een account te activeren, i.p.v. dat de gebruiker een e-mail ontvangt.
 **Risico:** Prima voor een demo aan vrienden; niet geschikt voor een echte rollout zonder een provider (Resend/Postmark/SES) te koppelen.
+**Opgelost (post-v1, 2026-09-28):** zet `RESEND_API_KEY` (+ `EMAIL_FROM`) in Vercel; zonder key blijft het console-gedrag; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
+
+---
+
+## Post-v1 (akkoord PO 2026-09-28)
+
+Vier door de PO goedgekeurde uitbreidingen na de v1-scope. UI bewust functioneel/minimaal (bestaande componentklassen); de logica zit in services en client-hooks, zodat de aparte UI-redesign alleen presentatie hoeft aan te passen.
+
+### 1. Beschikbaarheid: vrije tijden en bewerken (US-H1/H2)
+**Wat:** `DuoAvailabilityView` heeft naast het snelkeuze-rooster (Ochtend 08–12 / Middag 12–18 / Avond 18–22) weer een formulier voor een vrij tijdsblok (dag, van, tot, "vast terugkerend") en een lijst van álle blokken met **Bewerken** (`PATCH /api/availability/[id]`, bestond al) en **Verwijderen**. Beide duo-leden kunnen dit (lidmaatschapscheck in de service). Logica in `src/lib/client/useDuoAvailability.ts`; client-side validatie hergebruikt het zod-schema van de API (`validateAvailabilityInput` in `src/lib/availability/validation.ts`).
+**Keuzes:** een rooster-cel telt alleen als "aan" bij een exacte match (dag + begin + eind) — voorheen matchte alleen de begintijd, waardoor een vrij blok van bijv. 08:00–10:00 via de "Ochtend"-cel verwijderd kon worden. `PATCH` blijft een volledige vervanging (alle velden verplicht, `recurring` default `true`). Een ongeldig blok-id geeft nu `404` i.p.v. een 500.
+**Restrisico:** overlappende blokken worden niet samengevoegd of geweigerd (datamodel/API stonden dit al toe; onschuldig voor de externe API). `recurring=false` heeft geen datum in het datamodel — het betekent alleen "geen vast patroon"; een echte eenmalige datum is een aparte productbeslissing.
+
+### 2. E-mail via Resend
+**Wat:** `sendEmail` (`src/lib/auth/email.ts`) verstuurt via de Resend HTTP-API (`fetch` naar `https://api.resend.com/emails`, geen SDK-dependency) als `RESEND_API_KEY` gezet is; afzender `EMAIL_FROM` (default `Padel Ladder <onboarding@resend.dev>`). Zonder key: het oude console-gedrag. Beide variabelen staan met uitleg in `.env.example` en moeten in Vercel gezet worden.
+**Keuze bij een mislukte verzending:** `sendEmail` gooit niet, maar geeft `{ ok: false, error }` terug en logt de fout — zonder API-key (wordt ook uit een eventuele provider-echo geredigeerd) en met gemaskeerde ontvanger (`s***@example.com`). **Registratie** maakt het account dan tóch aan en antwoordt `201` met `emailSent: false` + een melding; de registratiepagina verwijst naar "Activatielink opnieuw versturen". Waarom geen rollback/500: bij een providerstoring zou elke registratie falen, en een 500 terwijl het account al bestaat laat de retry stuklopen op "bestaat al". **Resend-activation** blijft altijd hetzelfde generieke antwoord geven (geen account-enumeratie via "verzenden mislukt").
+**Restrisico:** met de default-afzender `onboarding@resend.dev` kan Resend alleen naar het eigen account-adres sturen — voor echte gebruikers moet een eigen domein geverifieerd en `EMAIL_FROM` gezet worden. Geen retry-queue: een mislukte mail wordt niet automatisch opnieuw geprobeerd (de gebruiker kan zelf opnieuw aanvragen). Timeout per verzending: 10 s.
+
+### 3a. Admin-beheer: admins aanwijzen/intrekken
+**Wat:** nieuwe pagina `/admin/users` (+ navigatielink "Gebruikers"), `GET /api/admin/users?q=` (max. 200 rijen, zoeken op e-mail) en `PATCH /api/admin/users/[id]/role` (`{ role: "USER" | "ADMIN" }`). Service: `src/server/services/userAdminService.ts`; hook: `src/lib/client/useAdminUsers.ts`.
+**Regels/keuzes:**
+- De **laatste actieve admin kan nooit gedegradeerd worden** (niet door zichzelf en niet door een ander) → `409 last_admin`. Rolwijzigingen lopen in een transactie met een Postgres advisory lock, zodat twee admins die elkaar gelijktijdig degraderen niet samen de laatste admin kunnen wegnemen.
+- Alleen **geactiveerde** accounts kunnen admin worden (`400 user_not_active`).
+- Elke wijziging → `audit_log` (`entity_type 'app_user'`, `action 'user_role_changed'`, `payload {from, to}`, `performed_by` = admin). Dezelfde rol opnieuw zetten is een no-op zonder audit-rij.
+- **Alle `/api/admin/*`-routes** gebruiken nu `requireAdmin` (`src/lib/auth/requireAdmin.ts`): naast het JWT wordt de rol uit de database gelezen. Het sessietoken bevat de rol van het inlogmoment (TTL 2 uur); zonder deze check zou een gedegradeerde admin tot 2 uur admin blijven. Kost één PK-lookup per admin-request.
+
+**Restrisico:** een nieuw aangewezen admin ziet de admin-menu-items pas na opnieuw inloggen (de API werkt wél direct). De allereerste admin in een lege productieomgeving moet via de database worden aangewezen.
+
+### 3b. Rate limiting via Postgres (externe API én login)
+**Externe availability-API** (`src/lib/apiClient/rateLimit.ts`): glijdend venster van 60 s over de al bestaande `audit_log`-rijen per API-client (`availability_api_call`); limiet blijft `platform_config.availability_api_rate_limit_per_minute`. Aanroepen die zelf met `429` geweigerd zijn tellen niet mee (anders blijft een client die blijft aandringen eeuwig geblokkeerd). `Retry-After` = tijd tot de oudste meegetelde aanroep uit het venster valt (min. 1 s). Geen schemawijziging.
+**Login** (`src/lib/auth/rateLimit.ts`): mislukte pogingen worden als `audit_log`-rij vastgelegd (`entity_type 'login_rate_limit'`, `action 'login_failed'`); een geslaagde login ná mislukte pogingen schrijft een reset-marker. `entity_id` is een uit SHA-256 afgeleide UUID van de key (e-mail + IP) — e-mailadres/IP worden niet opgeslagen. Semantiek: maximaal `login_max_attempts` mislukte pogingen per `login_lockout_minutes` per key (glijdend venster). **Gedragsverschil t.o.v. de oude in-memory limiter:** mislukte pogingen verlopen nu vanzelf na het venster (voorheen telden ze door tot een geslaagde login), en de blokkade duurt tot de oudste van de laatste N pogingen uit het venster valt (i.p.v. altijd precies `login_lockout_minutes` na de N-de poging).
+**Restrisico's:**
+- Een API-aanroep wordt pas aan het eind van de request gelogd: bij gelijktijdige (in-flight) requests van dezelfde client kan de limiet met maximaal het aantal gelijktijdige requests worden overschreden. Exact afdwingen vereist een reservering vóór elke request (extra schrijfactie per call); bewust niet gedaan.
+- De telquery gebruikt de bestaande index `idx_audit_log_entity (entity_type, entity_id)` en filtert daarna op `created_at`. Bij heel veel historische rijen per client/key wordt dat trager; dan helpt een index `(entity_type, entity_id, created_at)` (schemawijziging, niet zonder akkoord gedaan) en/of periodiek archiveren van oude `audit_log`-rijen.
+- `audit_log` groeit nu ook met elke mislukte login; geen opschoning.
+- `created_at` wordt door de app-instantie gezet; kleine klokverschillen tussen instanties verschuiven het venster marginaal.
+
+### 4. Opnieuw spelen na een overturned match-score-dispute (schemawijziging, akkoord PO)
+**Migratie:** `20260928120000_match_replay_after_void` — unieke index `match_challenge_id_key` vervangen door een gewone index `idx_match_challenge` plus een **partial unique index** `idx_match_challenge_not_voided ON match (challenge_id) WHERE status <> 'voided'` (hooguit één niet-voided match per challenge). In Prisma: `Match.challengeId` niet meer `@unique`, `Challenge.match` → `Challenge.matches` (1:n). De partial index staat alleen in de raw-SQL-migratie (zelfde aanpak als `member_pair_key`); `docs/Database_Schema.sql` en het ER-diagram zijn bijgewerkt.
+**Gedrag:**
+- `resolved_overturned` op een match-score-dispute: match → `voided`, challenge blijft `accepted`, en **de speeltermijn herstart**: nieuwe `match_deadline` = nu + `challenge_match_deadline_days`, maar nooit korter dan de oorspronkelijke. Reden: de oude deadline is bij afhandeling vaak al verstreken, wat ofwel elke nieuwe score blokkeert, ofwel direct een forfeit geeft voor iets waar de duo's niets aan konden doen. Dispute-status, match-status, deadline en audit-log gebeuren nu in **één transactie met compare-and-swaps** (voorheen losse writes); een dubbele/gelijktijdige afhandeling wordt geweigerd i.p.v. half uitgevoerd. De audit-payload bevat `replayAllowed` en `newMatchDeadline`.
+- `submitScore` staat een nieuwe match toe zodra alle eerdere matches voided zijn. Het aanmaken gebeurt in een transactie met `SELECT … FOR UPDATE` op de challenge-rij (status/deadline worden na de lock opnieuw gecontroleerd); een eventuele race met een gelijktijdige submit wordt door de partial unique index opgevangen en als `score_already_submitted` (of, bij dezelfde idempotency-key, als de bestaande match) teruggegeven. Idempotency-keys blijven globaal uniek; een retry met de key van de voided poging geeft die (voided) match terug — de UI genereert per indiening een nieuwe key.
+- **Unplayed-timeout-job:** een challenge met uitsluitend voided matches telt als "nog niet gespeeld". De job neemt dezelfde rij-lock als `submitScore` en controleert daarna opnieuw of er geen niet-voided match is én of de (mogelijk verlengde) deadline nog steeds verstreken is. Speelt het duo-paar de replay niet binnen de nieuwe termijn, dan volgt de gewone vaste forfeit-penalty voor beide duo's (met de bestaande forfeit-dispute-mogelijkheid).
+- **ELO:** ongewijzigd — pas bij bevestiging/auto-confirm van de nieuwe match via `finalizeMatch` (idempotente CAS op de matchstatus, één transactie). Een voided match heeft nooit rating-impact gehad, dus er is niets terug te draaien. `RatingHistory(duo_id, match_id)` blijft uniek per match.
+- **API/UI:** `GET /api/duos/[id]/challenges` behoudt het veld `match` (= de actieve, niet-voided match of `null`) en krijgt `voidedMatches` erbij; de challenges-view toont bij een replay "Eerdere score … is ongeldig verklaard door een admin — speel opnieuw".
+
+**Restrisico's:** bij herhaald overturnen kan een duo-paar in theorie steeds opnieuw spelen met steeds een nieuwe termijn — geen limiet op het aantal replays (productbeslissing; de admin kan in plaats daarvan de score handhaven). **Deploy-volgorde:** de migratie moet op productie vóór (of tegelijk met) deze code draaien (`npx prisma migrate deploy`); zonder migratie weigert de oude unieke index een replay-score (nette `score_already_submitted`-fout, geen datacorruptie).
+
+### Overig
+- `.eslintrc.json` heeft nu `"root": true`, zodat ESLint in een geneste git-worktree niet ook de config van de bovenliggende checkout laadt (gaf een plugin-conflict). Geen gedragswijziging in de hoofd-checkout.
+- Nieuwe/uitgebreide e2e-tests: `04-disputes` (overturned → nieuwe score → bevestigen → ELO), `05-availability-and-admin` (vrij blok toevoegen/bewerken/verwijderen door beide leden), `07-admin-users` (promoveren/degraderen, laatste-admin-regel, 403 voor een gewone gebruiker). Let op: de replay-test in `04` wijzigt de rating van Global Gladiators (onderste ladderrij); `01-ladder` draait in de volledige suite eerder (alfabetische volgorde, `workers: 1`).
