@@ -1,13 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { hashPassword } from "@/lib/auth/password";
 import { signActivationToken } from "@/lib/auth/tokens";
-import { __clearRateLimitStoreForTests } from "@/lib/auth/rateLimit";
+
+// In-memory nabootsing van audit_log voor de (Postgres-backed) login-rate-limiter.
+type AuditRow = { entityType: string; entityId: string; action: string; createdAt: Date };
+const auditRows: AuditRow[] = [];
 
 const mockPrisma = {
   user: {
     findUnique: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+  },
+  auditLog: {
+    create: vi.fn(async ({ data }: { data: Omit<AuditRow, "createdAt"> }) => {
+      auditRows.push({ ...data, createdAt: new Date() });
+    }),
+    findMany: vi.fn(
+      async ({ where, take }: { where: { entityType: string; entityId: string; createdAt: { gt: Date } }; take: number }) =>
+        auditRows
+          .filter(
+            (r) =>
+              r.entityType === where.entityType &&
+              r.entityId === where.entityId &&
+              r.createdAt > where.createdAt.gt,
+          )
+          .reverse()
+          .slice(0, take),
+    ),
   },
 };
 
@@ -34,7 +54,7 @@ const { register, activate, resendActivation, login, AuthError } = await import(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  __clearRateLimitStoreForTests();
+  auditRows.length = 0;
   mockSendEmail.mockResolvedValue({ ok: true, provider: "console" });
   mockGetConfigNumber.mockImplementation(async (key: string) => {
     if (key === "login_max_attempts") return 3;
@@ -225,5 +245,26 @@ describe("login", () => {
     await expect(login("test@example.com", "fout4", "key-d")).rejects.toMatchObject({
       code: "rate_limited",
     });
+  });
+
+  it("schrijft bij een geslaagde login zonder eerdere mislukkingen géén audit-rij, na mislukkingen wél een reset", async () => {
+    const passwordHash = await hashPassword("Wachtwoord1");
+    const activeUser = { id: "user-1", passwordHash, isActive: true, role: "USER" };
+
+    mockPrisma.user.findUnique.mockResolvedValueOnce(activeUser);
+    await login("test@example.com", "Wachtwoord1", "key-e");
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+
+    mockPrisma.user.findUnique.mockResolvedValueOnce(activeUser);
+    await expect(login("test@example.com", "Fout1", "key-e")).rejects.toMatchObject({
+      code: "invalid_credentials",
+    });
+    mockPrisma.user.findUnique.mockResolvedValueOnce(activeUser);
+    await login("test@example.com", "Wachtwoord1", "key-e");
+
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.auditLog.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "login_rate_limit_reset" }) }),
+    );
   });
 });

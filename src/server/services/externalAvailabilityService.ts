@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { hashApiKey } from "@/lib/apiClient/apiKey";
-import { checkAndRecordRequest } from "@/lib/apiClient/rateLimit";
+import {
+  checkApiRateLimit,
+  API_CALL_AUDIT_ENTITY_TYPE,
+  API_CALL_AUDIT_ACTION,
+} from "@/lib/apiClient/rateLimit";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
 
 export class ExternalApiError extends Error {
@@ -33,7 +37,9 @@ export async function authenticateApiKey(plaintextKey: string): Promise<Authenti
 
 export async function enforceRateLimit(apiClientId: string): Promise<void> {
   const maxPerMinute = await getConfigNumber("availability_api_rate_limit_per_minute");
-  const result = checkAndRecordRequest(apiClientId, maxPerMinute, 60_000);
+  // Postgres-backed (telt gelogde aanroepen in audit_log), dus gedeeld
+  // over alle instanties — zie src/lib/apiClient/rateLimit.ts.
+  const result = await checkApiRateLimit(apiClientId, maxPerMinute, 60_000);
   if (result.limited) {
     await logApiCall(apiClientId, "/api/v1/availability", 429);
     throw new ExternalApiError(
@@ -94,9 +100,9 @@ export async function logApiCall(
   // is (US-H5) — alleen client/endpoint/statuscode.
   await prisma.auditLog.create({
     data: {
-      entityType: "api_client",
+      entityType: API_CALL_AUDIT_ENTITY_TYPE,
       entityId: apiClientId,
-      action: "availability_api_call",
+      action: API_CALL_AUDIT_ACTION,
       performedBy: null,
       payload: { endpoint, statusCode },
     },

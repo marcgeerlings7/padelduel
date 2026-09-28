@@ -7,14 +7,16 @@ const mockPrisma = {
   auditLog: { create: vi.fn() },
 };
 const mockGetConfigNumber = vi.fn();
-const mockCheckAndRecordRequest = vi.fn();
+const mockCheckApiRateLimit = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
 }));
 vi.mock("@/lib/apiClient/rateLimit", () => ({
-  checkAndRecordRequest: mockCheckAndRecordRequest,
+  checkApiRateLimit: mockCheckApiRateLimit,
+  API_CALL_AUDIT_ENTITY_TYPE: "api_client",
+  API_CALL_AUDIT_ACTION: "availability_api_call",
 }));
 
 const {
@@ -89,13 +91,21 @@ describe("authenticateApiKey", () => {
 
 describe("enforceRateLimit", () => {
   it("laat door en logt niets als de limiet niet overschreden is", async () => {
-    mockCheckAndRecordRequest.mockReturnValueOnce({ limited: false });
+    mockCheckApiRateLimit.mockResolvedValueOnce({ limited: false });
     await enforceRateLimit("client-1");
     expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("gebruikt de limiet uit platform_config met een venster van 60 seconden", async () => {
+    mockGetConfigNumber.mockResolvedValueOnce(42);
+    mockCheckApiRateLimit.mockResolvedValueOnce({ limited: false });
+    await enforceRateLimit("client-1");
+    expect(mockGetConfigNumber).toHaveBeenCalledWith("availability_api_rate_limit_per_minute");
+    expect(mockCheckApiRateLimit).toHaveBeenCalledWith("client-1", 42, 60_000);
+  });
+
   it("gooit een 429 en logt de overschrijding", async () => {
-    mockCheckAndRecordRequest.mockReturnValueOnce({ limited: true, retryAfterSeconds: 30 });
+    mockCheckApiRateLimit.mockResolvedValueOnce({ limited: true, retryAfterSeconds: 30 });
     await expect(enforceRateLimit("client-1")).rejects.toMatchObject({
       code: "rate_limited",
       httpStatus: 429,

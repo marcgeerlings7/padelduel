@@ -115,7 +115,8 @@ export async function login(
   const maxAttempts = await getConfigNumber("login_max_attempts");
   const lockoutMinutes = await getConfigNumber("login_lockout_minutes");
 
-  const status = checkRateLimit(rateLimitKey);
+  // Postgres-backed (gedeeld over alle instanties), zie src/lib/auth/rateLimit.ts.
+  const status = await checkRateLimit(rateLimitKey, maxAttempts, lockoutMinutes);
   if (status.limited) {
     throw new AuthError(
       "Te veel mislukte inlogpogingen. Probeer het later opnieuw.",
@@ -131,7 +132,7 @@ export async function login(
   const passwordMatches = await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
   if (!user || !passwordMatches) {
-    recordFailedAttempt(rateLimitKey, maxAttempts, lockoutMinutes);
+    await recordFailedAttempt(rateLimitKey);
     throw new AuthError(GENERIC_LOGIN_ERROR, "invalid_credentials", 401);
   }
 
@@ -145,7 +146,11 @@ export async function login(
     );
   }
 
-  resetRateLimit(rateLimitKey);
+  // Alleen een reset-marker schrijven als er iets te resetten valt, zodat
+  // niet elke geslaagde login een audit-rij oplevert.
+  if (status.failedAttempts > 0) {
+    await resetRateLimit(rateLimitKey);
+  }
   const token = await signSessionToken(user.id, user.role);
   return { token };
 }
