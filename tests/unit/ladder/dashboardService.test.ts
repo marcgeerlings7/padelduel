@@ -117,3 +117,26 @@ describe("getDashboard", () => {
     expect(result.canFormMoreDuos).toBe(false);
   });
 });
+
+describe("getDashboard — afgeleide statistieken", () => {
+  it("neemt W-L, reeks, betrouwbaarheid en inactief-vlag over van de eigen ladderrij", async () => {
+    const stats = {
+      wins: 4,
+      losses: 2,
+      streak: "W2",
+      streakDetail: { result: "W", length: 2 },
+      setDifference: 3,
+      gameDifference: 11,
+      reliability: { played: 6, total: 7, percentage: 86 },
+      inactive: false,
+      lastActivityAt: new Date(2026, 8, 1),
+    };
+    const ladder = ladderOf(3).map((e) => (e.id === "duo-2" ? { ...e, ...stats } : e));
+    mockPrisma.duoMembership.findMany.mockResolvedValueOnce([membership("duo-2")]);
+    mockGetLadder.mockResolvedValueOnce(ladder);
+
+    const result = await getDashboard("user-1");
+
+    expect(result.duos[0].duo).toMatchObject(stats);
+  });
+});

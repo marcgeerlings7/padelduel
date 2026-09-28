@@ -83,3 +83,45 @@ export function determineWinner(sets: SetScore[]): MatchWinner {
   const challengedSets = sets.length - challengerSets;
   return challengerSets > challengedSets ? "challenger" : "challenged";
 }
+
+/**
+ * Een set met 10+ punten aan één kant is een (super-/match-)tiebreak i.p.v.
+ * een gewone set (zie validateSet: een gewone set eindigt uiterlijk op 7).
+ */
+export function isMatchTiebreak(set: SetScore): boolean {
+  return Math.max(set.challengerGames, set.challengedGames) >= 10;
+}
+
+export type ScoreSummary = {
+  challengerSets: number;
+  challengedSets: number;
+  /** Games volgens de KNLTB-telling: een match-tiebreak telt als 1-0. */
+  challengerGames: number;
+  challengedGames: number;
+};
+
+/**
+ * Set- en gamesaldo van een (gevalideerde) uitslag, geteld zoals de KNLTB
+ * dat sinds 2025 doet: gewone sets tellen hun games; een match-tiebreak
+ * (super-tiebreak) telt als één gewonnen set en als 1-0 in games — de
+ * tiebreakpunten (bijv. 10-8) zijn géén games. Gedeeld door de
+ * ELO-gamesaldo-factor (matchService) en de afgeleide statistieken
+ * (src/lib/stats), zodat beide exact dezelfde telling gebruiken.
+ */
+export function summarizeScore(sets: SetScore[]): ScoreSummary {
+  const summary: ScoreSummary = { challengerSets: 0, challengedSets: 0, challengerGames: 0, challengedGames: 0 };
+  for (const set of sets) {
+    const challengerWonSet = set.challengerGames > set.challengedGames;
+    if (challengerWonSet) summary.challengerSets++;
+    else summary.challengedSets++;
+
+    if (isMatchTiebreak(set)) {
+      if (challengerWonSet) summary.challengerGames++;
+      else summary.challengedGames++;
+    } else {
+      summary.challengerGames += set.challengerGames;
+      summary.challengedGames += set.challengedGames;
+    }
+  }
+  return summary;
+}

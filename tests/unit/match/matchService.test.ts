@@ -38,9 +38,12 @@ const mockGetLadder = vi.fn();
 const mockGetConfigNumber = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
-vi.mock("@/server/services/ladderService", () => ({ getLadder: mockGetLadder }));
+const mockGetConfigNumberOrDefault = vi.fn(async (_key: string, fallback: number) => fallback);
+
+vi.mock("@/server/services/ladderService", () => ({ getLadderPositions: mockGetLadder }));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
+  getConfigNumberOrDefault: mockGetConfigNumberOrDefault,
 }));
 
 const {
@@ -88,6 +91,7 @@ beforeEach(() => {
     if (key in CONFIG) return CONFIG[key];
     throw new Error(`onverwachte config-key in test: ${key}`);
   });
+  mockGetConfigNumberOrDefault.mockImplementation(async (_key: string, fallback: number) => fallback);
   mockPrisma.duoMembership.findFirst.mockResolvedValue({ id: "membership-1" });
   mockPrisma.match.findUnique.mockResolvedValue(null); // standaard: geen bestaande match
   mockGetLadder.mockResolvedValue([
@@ -292,7 +296,7 @@ describe("respondToMatch — dispute", () => {
 });
 
 describe("respondToMatch — confirm (ELO-verwerking)", () => {
-  function setupConfirmScenario() {
+  function setupConfirmScenario(scoreRaw = "6-4,6-3") {
     mockPrisma.match.findUnique.mockResolvedValueOnce({
       id: "match-1",
       status: "AWAITING_CONFIRMATION",
@@ -313,7 +317,7 @@ describe("respondToMatch — confirm (ELO-verwerking)", () => {
       id: "match-1",
       status: "AWAITING_CONFIRMATION",
       challengeId: "challenge-1",
-      scoreRaw: "6-4,6-3", // challenger wint -> duo-a is winnaar
+      scoreRaw, // standaard "6-4,6-3": challenger wint -> duo-a is winnaar
     });
     mockPrisma.duo.findUniqueOrThrow
       .mockResolvedValueOnce(duo({ id: "duo-a", currentRating: 1200 })) // winner
@@ -337,6 +341,69 @@ describe("respondToMatch — confirm (ELO-verwerking)", () => {
     );
     expect(mockPrisma.challenge.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "COMPLETED" } }),
+    );
+  });
+
+  function ratingUpdates(): Record<string, number> {
+    return Object.fromEntries(
+      mockPrisma.duo.update.mock.calls.map(([arg]) => [
+        (arg as { where: { id: string } }).where.id,
+        (arg as { data: { currentRating: number } }).data.currentRating,
+      ]),
+    );
+  }
+
+  // ELO_Algoritme.md §2bis: K=24 (established), gelijke ratings (E=0.5),
+  // M = 0.75 + 0.75 * m met m = (G_w - G_l) / (G_w + G_l).
+  it.each([
+    ["6-4,6-3", 1211, 1189], // games 12-7, m=5/19, M≈0.947 -> 11.37
+    ["6-0,6-0", 1218, 1182], // m=1, M=1.5 -> 18
+    ["7-6,6-7,10-8", 1209, 1191], // games 14-13 (tiebreak = 1-0), M≈0.778 -> 9.33
+  ])(
+    "verwerkt het gamesaldo van %s in de ELO-update (winnaar %i, verliezer %i)",
+    async (scoreRaw, winnerRating, loserRating) => {
+      setupConfirmScenario(scoreRaw);
+
+      await respondToMatch("match-1", "user-2", "confirm");
+
+      expect(ratingUpdates()).toEqual({ "duo-a": winnerRating, "duo-b": loserRating });
+    },
+  );
+
+  it("slaat de effectief toegepaste K (incl. gamesaldo-multiplier) op in RatingHistory", async () => {
+    setupConfirmScenario("6-0,6-0");
+
+    await respondToMatch("match-1", "user-2", "confirm");
+
+    expect(mockPrisma.ratingHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ duoId: "duo-a", kFactor: 36 }) }),
+    );
+  });
+
+  it("leest de multipliers uit platform_config (met fallback) en past een override toe", async () => {
+    mockGetConfigNumberOrDefault.mockImplementation(async (key: string, fallback: number) =>
+      key === "elo_margin_multiplier_min" || key === "elo_margin_multiplier_max" ? 1 : fallback,
+    );
+    setupConfirmScenario("6-0,6-0");
+
+    await respondToMatch("match-1", "user-2", "confirm");
+
+    // M = 1 -> klassieke ELO: 24 * 0.5 = 12.
+    expect(ratingUpdates()).toEqual({ "duo-a": 1212, "duo-b": 1188 });
+    expect(mockGetConfigNumberOrDefault).toHaveBeenCalledWith("elo_margin_multiplier_min", 0.75);
+    expect(mockGetConfigNumberOrDefault).toHaveBeenCalledWith("elo_margin_multiplier_max", 1.5);
+  });
+
+  it("weigert te verwerken bij een ongeldige multiplier-config (min <= 0), zonder rating-wijziging", async () => {
+    mockGetConfigNumberOrDefault.mockImplementation(async (key: string, fallback: number) =>
+      key === "elo_margin_multiplier_min" ? 0 : fallback,
+    );
+    setupConfirmScenario();
+
+    await expect(respondToMatch("match-1", "user-2", "confirm")).rejects.toThrow(/elo_margin_multiplier_min/);
+    expect(mockPrisma.duo.update).not.toHaveBeenCalled();
+    expect(mockPrisma.match.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }),
     );
   });
 
