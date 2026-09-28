@@ -219,7 +219,9 @@ model Challenge {
 
   challengerDuo Duo             @relation("ChallengeChallenger", fields: [challengerDuoId], references: [id])
   challengedDuo Duo             @relation("ChallengeChallenged", fields: [challengedDuoId], references: [id])
-  match         Match?
+  // 1:n sinds post-v1 (replay na een voided match); hooguit één niet-voided
+  // match per challenge (partial unique index, zie Match.challengeId).
+  matches       Match[]
   dispute       Dispute?
   ratingHistory RatingHistory[]
 
@@ -233,7 +235,13 @@ model Challenge {
 
 model Match {
   id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  challengeId         String      @unique @map("challenge_id") @db.Uuid
+  // Niet meer @unique (post-v1, akkoord PO 2026-09-28): na een
+  // resolved_overturned match-score-dispute (match -> voided) mag er een
+  // nieuwe match voor dezelfde challenge komen. Hooguit één NIET-voided
+  // match per challenge wordt afgedwongen door de partial unique index
+  // idx_match_challenge_not_voided (raw SQL in migratie
+  // 20260928120000_match_replay_after_void).
+  challengeId         String      @map("challenge_id") @db.Uuid
   scoreRaw            String      @map("score_raw") @db.VarChar(50)
   status              MatchStatus @default(AWAITING_CONFIRMATION)
   submittedBy         String      @map("submitted_by") @db.Uuid
@@ -250,6 +258,7 @@ model Match {
   dispute         Dispute?
 
   @@index([status], map: "idx_match_status")
+  @@index([challengeId], map: "idx_match_challenge")
   @@map("match")
 }
 

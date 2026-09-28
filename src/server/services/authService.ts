@@ -30,7 +30,20 @@ function buildActivationUrl(token: string): string {
   return `${base}/activate?token=${encodeURIComponent(token)}`;
 }
 
-export async function register(email: string, password: string): Promise<void> {
+export type RegisterResult = {
+  /**
+   * false als het account wél is aangemaakt maar de activatiemail niet
+   * verstuurd kon worden (provider-fout). Bewuste keuze: geen rollback van
+   * het account en geen 500 — de gebruiker kan via "activatielink opnieuw
+   * versturen" (resendActivation) een nieuwe poging doen. Een rollback zou
+   * bij een tijdelijke providerstoring alle registraties blokkeren, en een
+   * 500 terwijl het account al bestaat laat een retry op "bestaat al"
+   * stuklopen.
+   */
+  emailSent: boolean;
+};
+
+export async function register(email: string, password: string): Promise<RegisterResult> {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     // Generieke melding (US-A1): onthult niet of het account al bestaat.
@@ -43,7 +56,8 @@ export async function register(email: string, password: string): Promise<void> {
   });
 
   const token = await signActivationToken(user.id);
-  await sendEmail(buildActivationEmail(email, buildActivationUrl(token)));
+  const result = await sendEmail(buildActivationEmail(email, buildActivationUrl(token)));
+  return { emailSent: result.ok };
 }
 
 export async function activate(token: string): Promise<void> {
@@ -83,6 +97,8 @@ export async function resendActivation(email: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (user && !user.isActive) {
     const token = await signActivationToken(user.id);
+    // Een verzendfout wordt door sendEmail zelf gelogd; het antwoord blijft
+    // bewust generiek (geen enumeratie via "verzenden mislukt"-meldingen).
     await sendEmail(buildActivationEmail(email, buildActivationUrl(token)));
   }
   // Generiek antwoord, ongeacht of het e-mailadres bestaat of al actief is.
@@ -99,7 +115,8 @@ export async function login(
   const maxAttempts = await getConfigNumber("login_max_attempts");
   const lockoutMinutes = await getConfigNumber("login_lockout_minutes");
 
-  const status = checkRateLimit(rateLimitKey);
+  // Postgres-backed (gedeeld over alle instanties), zie src/lib/auth/rateLimit.ts.
+  const status = await checkRateLimit(rateLimitKey, maxAttempts, lockoutMinutes);
   if (status.limited) {
     throw new AuthError(
       "Te veel mislukte inlogpogingen. Probeer het later opnieuw.",
@@ -115,7 +132,7 @@ export async function login(
   const passwordMatches = await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
   if (!user || !passwordMatches) {
-    recordFailedAttempt(rateLimitKey, maxAttempts, lockoutMinutes);
+    await recordFailedAttempt(rateLimitKey);
     throw new AuthError(GENERIC_LOGIN_ERROR, "invalid_credentials", 401);
   }
 
@@ -129,7 +146,11 @@ export async function login(
     );
   }
 
-  resetRateLimit(rateLimitKey);
+  // Alleen een reset-marker schrijven als er iets te resetten valt, zodat
+  // niet elke geslaagde login een audit-rij oplevert.
+  if (status.failedAttempts > 0) {
+    await resetRateLimit(rateLimitKey);
+  }
   const token = await signSessionToken(user.id, user.role);
   return { token };
 }

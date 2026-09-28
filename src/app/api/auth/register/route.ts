@@ -10,8 +10,9 @@ export async function POST(request: NextRequest) {
     return jsonError("Ongeldige invoer.", 400, "invalid_input");
   }
 
+  let emailSent: boolean;
   try {
-    await register(parsed.data.email, parsed.data.password);
+    ({ emailSent } = await register(parsed.data.email, parsed.data.password));
   } catch (err) {
     if (err instanceof AuthError) {
       return jsonError(err.message, err.httpStatus, err.code);
@@ -19,8 +20,16 @@ export async function POST(request: NextRequest) {
     throw err;
   }
 
+  // Account is in beide gevallen aangemaakt (201). Bij een mislukte
+  // verzending krijgt de client dat expliciet te horen (emailSent: false),
+  // zodat de UI naar "activatielink opnieuw versturen" kan verwijzen.
   return NextResponse.json(
-    { message: "Account aangemaakt. Controleer je e-mail om te activeren." },
+    {
+      message: emailSent
+        ? "Account aangemaakt. Controleer je e-mail om te activeren."
+        : "Account aangemaakt, maar de activatiemail kon niet worden verstuurd. Vraag hieronder een nieuwe activatielink aan.",
+      emailSent,
+    },
     { status: 201 },
   );
 }

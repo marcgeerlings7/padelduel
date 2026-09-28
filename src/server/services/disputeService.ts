@@ -161,30 +161,22 @@ export async function resolveMatchScoreDispute(
   const dispute = await assertOpenDispute(disputeId, "MATCH_SCORE");
   const matchId = dispute.matchId!;
 
-  if (resolution === "upheld") {
-    // Zelfde ELO-verwerking als een normale bevestiging (US-F4), nu
-    // vanuit status DISPUTED i.p.v. AWAITING_CONFIRMATION.
-    await finalizeMatch(matchId, {
-      confirmedBy: null,
-      isAutoConfirm: false,
-      fromStatuses: ["DISPUTED"],
-    });
-  } else {
-    await prisma.match.updateMany({
-      where: { id: matchId, status: "DISPUTED" },
-      data: { status: "VOIDED" },
-    });
-    // Geen rating-impact (FR/US-G3): er was nog geen ELO-verwerking
-    // toegepast op een betwiste match, dus niets terug te draaien.
+  if (resolution === "overturned") {
+    await overturnMatchScoreDispute(disputeId, matchId, adminUserId, notes);
+    return;
   }
+
+  // Zelfde ELO-verwerking als een normale bevestiging (US-F4), nu
+  // vanuit status DISPUTED i.p.v. AWAITING_CONFIRMATION.
+  await finalizeMatch(matchId, {
+    confirmedBy: null,
+    isAutoConfirm: false,
+    fromStatuses: ["DISPUTED"],
+  });
 
   await prisma.dispute.update({
     where: { id: disputeId },
-    data: {
-      status: resolution === "upheld" ? "RESOLVED_UPHELD" : "RESOLVED_OVERTURNED",
-      resolvedBy: adminUserId,
-      resolvedAt: new Date(),
-    },
+    data: { status: "RESOLVED_UPHELD", resolvedBy: adminUserId, resolvedAt: new Date() },
   });
 
   await logDisputeResolution(disputeId, adminUserId, {
@@ -192,6 +184,92 @@ export async function resolveMatchScoreDispute(
     resolution,
     matchId,
     notes,
+  });
+}
+
+/**
+ * `resolved_overturned` op een match-score-dispute (post-v1, akkoord PO
+ * 2026-09-28): de match wordt `voided` en de challenge blijft `accepted`,
+ * zodat de duo's opnieuw kunnen spelen en een NIEUWE score kunnen indienen
+ * (submitScore staat een nieuwe match toe zodra alle eerdere matches voided
+ * zijn). De speeltermijn herstart: nieuwe match_deadline = nu +
+ * challenge_match_deadline_days, maar nooit korter dan de oorspronkelijke
+ * deadline. Zonder herstart zou de (vaak al verstreken) oude deadline
+ * ofwel elke nieuwe score blokkeren, ofwel direct een unplayed_timeout-
+ * forfeit opleveren voor iets waar de duo's niets aan konden doen.
+ *
+ * Alles in één transactie met compare-and-swaps (dispute OPEN, match
+ * DISPUTED, challenge ACCEPTED): een dubbele/gelijktijdige afhandeling
+ * wordt geweigerd i.p.v. half uitgevoerd. Geen rating-impact (US-G3): op
+ * een betwiste match is nog geen ELO-verwerking toegepast.
+ */
+async function overturnMatchScoreDispute(
+  disputeId: string,
+  matchId: string,
+  adminUserId: string,
+  notes?: string,
+): Promise<void> {
+  const matchDeadlineDays = await getConfigNumber("challenge_match_deadline_days");
+
+  await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const disputeGuard = await tx.dispute.updateMany({
+      where: { id: disputeId, status: "OPEN" },
+      data: { status: "RESOLVED_OVERTURNED", resolvedBy: adminUserId, resolvedAt: now },
+    });
+    if (disputeGuard.count === 0) {
+      throw new DisputeError("Deze dispute is al afgehandeld.", "dispute_not_open", 400);
+    }
+
+    const matchGuard = await tx.match.updateMany({
+      where: { id: matchId, status: "DISPUTED" },
+      data: { status: "VOIDED" },
+    });
+    if (matchGuard.count === 0) {
+      throw new DisputeError(
+        "De match staat niet (meer) op betwist en kan niet ongeldig verklaard worden.",
+        "match_not_disputed",
+        409,
+      );
+    }
+
+    const match = await tx.match.findUniqueOrThrow({ where: { id: matchId } });
+    const challenge = await tx.challenge.findUniqueOrThrow({ where: { id: match.challengeId } });
+    const restartedDeadline = new Date(now.getTime() + matchDeadlineDays * 24 * 60 * 60 * 1000);
+    const newMatchDeadline =
+      challenge.matchDeadline && challenge.matchDeadline > restartedDeadline
+        ? challenge.matchDeadline
+        : restartedDeadline;
+
+    const challengeGuard = await tx.challenge.updateMany({
+      where: { id: challenge.id, status: "ACCEPTED" },
+      data: { matchDeadline: newMatchDeadline },
+    });
+    if (challengeGuard.count === 0) {
+      throw new DisputeError(
+        "De challenge staat niet meer op geaccepteerd; opnieuw spelen is niet mogelijk.",
+        "challenge_not_accepted",
+        409,
+      );
+    }
+
+    await tx.auditLog.create({
+      data: {
+        entityType: "dispute",
+        entityId: disputeId,
+        action: "dispute_resolved",
+        performedBy: adminUserId,
+        payload: {
+          subject: "match_score",
+          resolution: "overturned",
+          matchId,
+          challengeId: challenge.id,
+          replayAllowed: true,
+          newMatchDeadline: newMatchDeadline.toISOString(),
+          notes,
+        } as Prisma.InputJsonValue,
+      },
+    });
   });
 }
 

@@ -18,6 +18,7 @@ const ADMIN_LINKS = [
   { href: "/admin/disputes", label: "Disputes" },
   { href: "/admin/api-clients", label: "API-clients" },
   { href: "/admin/platform-config", label: "Platform config" },
+  { href: "/admin/users", label: "Gebruikers" },
 ];
 
 export function NavBar() {

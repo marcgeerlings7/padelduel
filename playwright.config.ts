@@ -21,7 +21,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // De devcontainer heeft maar 64 MB /dev/shm; Chromium crasht daardoor
+        // sporadisch ("Target crashed") bij meerdere gelijktijdige contexts.
+        launchOptions: { args: ["--disable-dev-shm-usage"] },
+      },
     },
   ],
   webServer: {

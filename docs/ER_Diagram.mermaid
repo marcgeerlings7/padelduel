@@ -4,7 +4,7 @@ erDiagram
     REGION ||--o{ DUO : "bevat"
     DUO ||--o{ CHALLENGE : "daagt uit (challenger)"
     DUO ||--o{ CHALLENGE : "ontvangt (challenged)"
-    CHALLENGE ||--o| MATCH : "resulteert in"
+    CHALLENGE ||--o{ MATCH : "resulteert in (max. 1 niet-voided)"
     CHALLENGE ||--o| DISPUTE : "kan forfeit-dispute hebben"
     MATCH ||--o{ RATING_HISTORY : "genereert"
     MATCH ||--o| DISPUTE : "kan hebben"

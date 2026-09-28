@@ -1,82 +1,124 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, ApiError } from "@/lib/client/api";
-import { getStoredToken } from "@/lib/client/session";
+import { Fragment, useState } from "react";
+import {
+  useDuoAvailability,
+  DAY_LABELS,
+  QUICK_SLOTS,
+  AvailabilityBlock,
+  AvailabilityInput,
+} from "@/lib/client/useDuoAvailability";
 
-const DAY_LABELS = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
+const EMPTY_INPUT: AvailabilityInput = { dayOfWeek: 0, startTime: "19:00", endTime: "21:00", recurring: true };
 
-const SLOTS = [
-  { label: "Ochtend", startTime: "08:00", endTime: "12:00" },
-  { label: "Middag", startTime: "12:00", endTime: "18:00" },
-  { label: "Avond", startTime: "18:00", endTime: "22:00" },
-];
+/**
+ * Formulier voor een vrij tijdsblok (toevoegen of bewerken). Puur
+ * presentatie + lokale formulierstate; validatie en API-calls zitten in
+ * useDuoAvailability.
+ */
+function AvailabilityForm({
+  initial,
+  submitLabel,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  initial: AvailabilityInput;
+  submitLabel: string;
+  busy: boolean;
+  onSubmit: (input: AvailabilityInput) => Promise<string | null>;
+  onCancel?: () => void;
+}) {
+  const [input, setInput] = useState<AvailabilityInput>(initial);
+  const [error, setError] = useState<string | null>(null);
 
-type AvailabilityBlock = {
-  id: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  recurring: boolean;
-};
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const result = await onSubmit(input);
+    if (result) setError(result);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3" style={{ fontSize: 13 }}>
+      <div className="field">
+        <label htmlFor={`${submitLabel}-day`}>Dag</label>
+        <select
+          id={`${submitLabel}-day`}
+          className="input"
+          value={input.dayOfWeek}
+          onChange={(e) => setInput((prev) => ({ ...prev, dayOfWeek: Number(e.target.value) }))}
+        >
+          {DAY_LABELS.map((label, i) => (
+            <option key={label} value={i}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor={`${submitLabel}-start`}>Van</label>
+        <input
+          id={`${submitLabel}-start`}
+          className="input"
+          type="time"
+          required
+          value={input.startTime}
+          onChange={(e) => setInput((prev) => ({ ...prev, startTime: e.target.value }))}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor={`${submitLabel}-end`}>Tot</label>
+        <input
+          id={`${submitLabel}-end`}
+          className="input"
+          type="time"
+          required
+          value={input.endTime}
+          onChange={(e) => setInput((prev) => ({ ...prev, endTime: e.target.value }))}
+        />
+      </div>
+      <label className="flex items-center gap-2" style={{ paddingBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={input.recurring}
+          onChange={(e) => setInput((prev) => ({ ...prev, recurring: e.target.checked }))}
+        />
+        Vast terugkerend (elke week)
+      </label>
+      <button type="submit" disabled={busy} className="btn btn-primary">
+        {submitLabel}
+      </button>
+      {onCancel && (
+        <button type="button" onClick={onCancel} className="btn btn-secondary">
+          Annuleren
+        </button>
+      )}
+      {error && (
+        <p style={{ color: "var(--color-accent-700)", width: "100%", margin: 0 }}>{error}</p>
+      )}
+    </form>
+  );
+}
+
+function blockLabel(block: AvailabilityBlock): string {
+  return `${DAY_LABELS[block.dayOfWeek] ?? "?"} ${block.startTime}–${block.endTime}`;
+}
 
 export function DuoAvailabilityView({ duoId }: { duoId: string }) {
-  const router = useRouter();
-  const [blocks, setBlocks] = useState<AvailabilityBlock[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const { blocks, loadError, busyKey, findQuickSlotBlock, toggleQuickSlot, addBlock, updateBlock, removeBlock } =
+    useDuoAvailability(duoId);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Remount van het toevoegformulier na een geslaagde toevoeging (leegmaken).
+  const [addFormKey, setAddFormKey] = useState(0);
 
-  function reload() {
-    apiFetch<AvailabilityBlock[]>(`/api/duos/${duoId}/availability`)
-      .then(setBlocks)
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 401) {
-          router.push("/login");
-          return;
-        }
-        setError("Kon de beschikbaarheid niet laden.");
-      });
+  async function report(result: Promise<string | null>) {
+    setActionError(await result);
   }
 
-  useEffect(() => {
-    if (!getStoredToken()) {
-      router.push("/login");
-      return;
-    }
-    setBlocks(null);
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [duoId, router]);
-
-  async function toggleCell(dayOfWeek: number, slot: (typeof SLOTS)[number]) {
-    const key = `${dayOfWeek}-${slot.startTime}`;
-    const existing = blocks?.find(
-      (b) => b.dayOfWeek === dayOfWeek && b.startTime.slice(0, 5) === slot.startTime,
-    );
-    setBusyKey(key);
-    try {
-      if (existing) {
-        await apiFetch(`/api/availability/${existing.id}`, { method: "DELETE" });
-      } else {
-        await apiFetch(`/api/duos/${duoId}/availability`, {
-          method: "POST",
-          body: JSON.stringify({
-            dayOfWeek,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            recurring: true,
-          }),
-        });
-      }
-      reload();
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  if (error) {
-    return <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{error}</p>;
+  if (loadError) {
+    return <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{loadError}</p>;
   }
   if (!blocks) {
     return <p className="text-sm">Laden...</p>;
@@ -90,6 +132,9 @@ export function DuoAvailabilityView({ duoId }: { duoId: string }) {
         </p>
       )}
 
+      {actionError && <p style={{ fontSize: 13, color: "var(--color-accent-700)" }}>{actionError}</p>}
+
+      <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 16, margin: 0 }}>Snelkeuze</h2>
       <div style={{ overflowX: "auto" }}>
         <div
           style={{
@@ -116,7 +161,7 @@ export function DuoAvailabilityView({ duoId }: { duoId: string }) {
               {label}
             </div>
           ))}
-          {SLOTS.map((slot) => (
+          {QUICK_SLOTS.map((slot) => (
             <Fragment key={slot.label}>
               <div
                 style={{
@@ -129,20 +174,18 @@ export function DuoAvailabilityView({ duoId }: { duoId: string }) {
                 }}
               >
                 {slot.label}
+                <br />
+                {slot.startTime}–{slot.endTime}
               </div>
               {DAY_LABELS.map((dayLabel, dayOfWeek) => {
-                const key = `${dayOfWeek}-${slot.startTime}`;
-                const existing = blocks.find(
-                  (b) => b.dayOfWeek === dayOfWeek && b.startTime.slice(0, 5) === slot.startTime,
-                );
-                const on = Boolean(existing);
+                const on = Boolean(findQuickSlotBlock(dayOfWeek, slot));
                 return (
                   <button
-                    key={key}
+                    key={`${dayOfWeek}-${slot.startTime}`}
                     type="button"
                     aria-label={`${dayLabel} ${slot.label}`}
-                    disabled={busyKey === key}
-                    onClick={() => toggleCell(dayOfWeek, slot)}
+                    disabled={busyKey === `slot-${dayOfWeek}-${slot.startTime}`}
+                    onClick={() => report(toggleQuickSlot(dayOfWeek, slot))}
                     style={{
                       background: on ? "var(--color-accent)" : "var(--color-bg)",
                       color: on ? "var(--color-bg)" : "var(--color-text)",
@@ -160,6 +203,79 @@ export function DuoAvailabilityView({ duoId }: { duoId: string }) {
             </Fragment>
           ))}
         </div>
+      </div>
+
+      <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 16, margin: 0 }}>
+        Alle tijdsblokken
+      </h2>
+      {blocks.length > 0 && (
+        <ul className="flex flex-col" style={{ gap: 2 }}>
+          {blocks.map((block) => (
+            <li key={block.id} className="card" data-availability-block={blockLabel(block)} style={{ borderRadius: 0 }}>
+              {editingId === block.id ? (
+                <AvailabilityForm
+                  initial={{
+                    dayOfWeek: block.dayOfWeek,
+                    startTime: block.startTime,
+                    endTime: block.endTime,
+                    recurring: block.recurring,
+                  }}
+                  submitLabel="Opslaan"
+                  busy={busyKey === `edit-${block.id}`}
+                  onSubmit={async (input) => {
+                    const error = await updateBlock(block.id, input);
+                    if (!error) setEditingId(null);
+                    return error;
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {blockLabel(block)}{" "}
+                    <span className="tag tag-outline">{block.recurring ? "Elke week" : "Niet vast terugkerend"}</span>
+                  </span>
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(block.id)}
+                      className="btn btn-secondary"
+                      style={{ fontSize: 12 }}
+                    >
+                      Bewerken
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyKey === `delete-${block.id}`}
+                      onClick={() => report(removeBlock(block.id))}
+                      className="btn btn-secondary"
+                      style={{ fontSize: 12 }}
+                    >
+                      Verwijderen
+                    </button>
+                  </span>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="card">
+        <h3 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 14, margin: 0 }}>
+          Tijdsblok toevoegen
+        </h3>
+        <AvailabilityForm
+          key={addFormKey}
+          initial={EMPTY_INPUT}
+          submitLabel="Toevoegen"
+          busy={busyKey === "add"}
+          onSubmit={async (input) => {
+            const error = await addBlock(input);
+            if (!error) setAddFormKey((k) => k + 1);
+            return error;
+          }}
+        />
       </div>
     </>
   );

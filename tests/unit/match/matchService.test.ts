@@ -17,6 +17,7 @@ const mockPrisma = {
     updateMany: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
+    count: vi.fn(),
   },
   duo: {
     findUniqueOrThrow: vi.fn(),
@@ -24,6 +25,7 @@ const mockPrisma = {
   },
   ratingHistory: { create: vi.fn() },
   auditLog: { create: vi.fn() },
+  $queryRaw: vi.fn(async () => [{ id: "locked" }]),
   $transaction: vi.fn(async (arg: unknown) => {
     if (typeof arg === "function") {
       return (arg as (tx: typeof mockPrisma) => Promise<unknown>)(mockPrisma);
@@ -92,7 +94,11 @@ beforeEach(() => {
     { id: "duo-a", position: 3 },
     { id: "duo-b", position: 4 },
   ]);
-  mockPrisma.match.findFirst.mockResolvedValue(null); // standaard: geen herhaalde tegenstander
+  mockPrisma.match.findFirst.mockResolvedValue(null); // standaard: geen herhaalde tegenstander / geen actieve match
+  mockPrisma.match.count.mockResolvedValue(0); // standaard: geen niet-voided match
+  // Binnen de submitScore-transactie wordt de challenge na de rij-lock
+  // opnieuw gelezen (findUniqueOrThrow); standaard dezelfde geaccepteerde challenge.
+  mockPrisma.challenge.findUniqueOrThrow.mockResolvedValue(acceptedChallenge());
 });
 
 describe("submitScore", () => {
@@ -178,12 +184,85 @@ describe("submitScore", () => {
 
   it("weigert een tweede score-indiening voor dezelfde challenge (andere key)", async () => {
     mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
-    mockPrisma.match.findUnique
-      .mockResolvedValueOnce(null) // idempotency-key-check: nieuw
-      .mockResolvedValueOnce({ id: "match-existing", challengeId: "challenge-1" }); // challenge-check: al een match
+    mockPrisma.match.findFirst.mockResolvedValueOnce({ id: "match-existing" }); // al een actieve (niet-voided) match
 
     await expect(submitScore("challenge-1", "user-1", VALID_SETS, "key-2")).rejects.toMatchObject({
       code: "score_already_submitted",
+    });
+    expect(mockPrisma.match.create).not.toHaveBeenCalled();
+  });
+
+  it("zoekt naar een bestaande match met uitsluiting van voided matches, onder een rij-lock op de challenge", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockResolvedValueOnce({ id: "match-2" });
+
+    await submitScore("challenge-1", "user-1", VALID_SETS, "key-2");
+
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.match.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { challengeId: "challenge-1", status: { not: "VOIDED" } } }),
+    );
+  });
+
+  it("replay: staat een nieuwe score toe als alle eerdere matches voided zijn (overturned dispute)", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    // findFirst (niet-voided) -> null: de enige eerdere match is voided
+    mockPrisma.match.findFirst.mockResolvedValueOnce(null);
+    mockPrisma.match.create.mockResolvedValueOnce({ id: "match-replay" });
+
+    const result = await submitScore("challenge-1", "user-1", VALID_SETS, "key-replay");
+
+    expect(result).toEqual({ id: "match-replay" });
+    expect(mockPrisma.match.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ challengeId: "challenge-1", idempotencyKey: "key-replay" }),
+      }),
+    );
+  });
+
+  it("hercontroleert de status ná de rij-lock (challenge net op unplayed_timeout gezet door de job)", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.challenge.findUniqueOrThrow.mockResolvedValueOnce(acceptedChallenge({ status: "UNPLAYED_TIMEOUT" }));
+
+    await expect(submitScore("challenge-1", "user-1", VALID_SETS, "key-3")).rejects.toMatchObject({
+      code: "challenge_not_accepted",
+    });
+    expect(mockPrisma.match.create).not.toHaveBeenCalled();
+  });
+
+  it("vertaalt een unieke-index-conflict (gelijktijdige submit) naar score_already_submitted", async () => {
+    const { Prisma } = await import("@prisma/client");
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    mockPrisma.match.findUnique
+      .mockResolvedValueOnce(null) // idempotency-pre-check
+      .mockResolvedValueOnce(null); // na het conflict: geen match met deze key
+
+    await expect(submitScore("challenge-1", "user-1", VALID_SETS, "key-4")).rejects.toMatchObject({
+      code: "score_already_submitted",
+    });
+  });
+
+  it("geeft bij een unieke-index-conflict op dezelfde idempotency-key de bestaande match terug", async () => {
+    const { Prisma } = await import("@prisma/client");
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    mockPrisma.match.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "match-race", challengeId: "challenge-1" });
+
+    await expect(submitScore("challenge-1", "user-1", VALID_SETS, "key-5")).resolves.toEqual({
+      id: "match-race",
     });
   });
 });
@@ -337,6 +416,48 @@ describe("autoConfirmOverdueMatches", () => {
 });
 
 describe("expireUnplayedChallenges", () => {
+  it("selecteert alleen challenges zonder niet-voided match (replay na overturned dispute telt mee)", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([]);
+
+    await expireUnplayedChallenges();
+
+    expect(mockPrisma.challenge.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "ACCEPTED",
+          matches: { none: { status: { not: "VOIDED" } } },
+        }),
+      }),
+    );
+  });
+
+  it("slaat een challenge over als er ná de rij-lock toch een niet-voided match blijkt te zijn", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([{ id: "challenge-1" }]);
+    mockPrisma.match.count.mockResolvedValueOnce(1); // net een (replay-)score ingediend
+
+    const results = await expireUnplayedChallenges();
+
+    expect(results).toEqual([null]);
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.challenge.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.duo.update).not.toHaveBeenCalled();
+  });
+
+  it("controleert in de compare-and-swap opnieuw de (mogelijk verlengde) deadline", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([{ id: "challenge-1" }]);
+    mockPrisma.challenge.updateMany.mockResolvedValueOnce({ count: 0 }); // deadline intussen verlengd
+
+    const results = await expireUnplayedChallenges();
+
+    expect(results).toEqual([null]);
+    expect(mockPrisma.challenge.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "challenge-1", status: "ACCEPTED", matchDeadline: { lt: expect.any(Date) } },
+      }),
+    );
+    expect(mockPrisma.ratingHistory.create).not.toHaveBeenCalled();
+  });
+
   it("past de forfeit-penalty toe op BEIDE duo's", async () => {
     mockPrisma.challenge.findMany.mockResolvedValueOnce([{ id: "challenge-1" }]);
     mockPrisma.challenge.updateMany.mockResolvedValueOnce({ count: 1 });
