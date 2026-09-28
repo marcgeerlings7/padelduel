@@ -337,7 +337,7 @@ ON CONFLICT (key) DO NOTHING;
 ```
 
 
-> **Status van deze rijen (KNLTB-schemawerk):** ze zijn nog **niet** opgenomen in migratie `20260928150000_knltb_profile_walkover_postponement_notifications`. Die migratie was al op de gedeelde testdatabase toegepast toen het verzoek kwam; het achteraf aanpassen van een toegepaste migratie (checksum-drift op een gedeelde DB) is geblokkeerd en ligt bij de PO/orchestrator. Zolang de rijen ontbreken, gebruikt de code de defaults hierboven (`getConfigNumberOrDefault`), dus functioneel verandert er niets. Opties: de drie rijen vóór de merge aan die migratie toevoegen (en de testdatabase resetten met `npm run db:test:reset`), of een kleine data-only vervolgmigratie.
+> **Status van deze rijen:** opgenomen in de data-only vervolgmigratie `20260928160000_elo_margin_inactive_config` (een al toegepaste migratie wordt nooit achteraf gewijzigd).
 
 ---
 
