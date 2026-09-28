@@ -63,6 +63,13 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   op match.challenge_id expliciet goedgekeurd, (5) volledig nieuw design op
   Tailwind v4 + shadcn + Kokonut UI + Bklit UI + Motion (vervangt het
   Modernist-design system), (6) gap-analyse t.o.v. KNLTB-padel.
+- KNLTB-aanvullingen (akkoord PO 2026-09-28, incl. benodigde schemawijzigingen):
+  wedstrijdhistorie + onderling resultaat + W-L/reeks + betrouwbaarheid +
+  inactief-markering (afgeleid); e-mailherinneringen met afmeldvoorkeuren;
+  walkover/opgave als uitslag + uitstel met wederzijds akkoord; spelersprofiel
+  (naam, optionele speelsterkte/categorie) + startrating nieuw duo uit
+  bestaande duo-ratings; gamesaldo in de ELO-formule (forfeits blijven
+  buiten de formule). NIET: seizoenen (bewust uitgesteld).
 
 ## Wat NIET bouwen (zie PRD §4)
 Chat, social feed, club-administratie, fysieke baanreservering/boeking, advertenties.
