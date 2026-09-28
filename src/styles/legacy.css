@@ -1,0 +1,296 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   LEGACY LAAG — Modernist-compatibiliteit tijdens de migratie
+   ──────────────────────────────────────────────────────────────────────────
+   Houdt de oude klassen (.btn, .card, .tag, .table, .field, .input, .hr, …)
+   én de oude CSS-variabelen (--color-bg, --color-accent-700, --font-heading,
+   …) werkend, maar herbouwd op de nieuwe Court-tokens (incl. dark mode).
+
+   • NIET gebruiken in nieuwe/geherontworpen code — zie docs/Design_System.md
+     §8 (migratierecept).
+   • Zit in @layer legacy, onder Tailwinds components/utilities: een utility
+     op hetzelfde element wint altijd.
+   • Element-defaults (h1-maten, p-marges, onderstreepte links) gelden alleen
+     BUITEN een [data-kit]-subtree. Geherontworpen pagina's zetten data-kit op
+     hun root (de <Page>-component uit src/components/app doet dat al).
+   • Verwijderen zodra geen enkele pagina nog legacy-klassen of --color-*
+     inline-variabelen gebruikt (grep: 'className="(btn|card|tag|field|input|hr)'
+     en 'var(--color-').
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@layer legacy {
+  :root,
+  .dark {
+    --color-bg: var(--background);
+    --color-surface: var(--card);
+    --color-text: var(--foreground);
+    --color-accent: var(--primary);
+    --color-accent-2: var(--primary);
+    --color-divider: var(--border);
+
+    /* Thema-bewuste tussentinten (flippen mee in dark mode). */
+    --color-neutral-100: color-mix(in oklab, var(--foreground) 5%, var(--background));
+    --color-neutral-200: color-mix(in oklab, var(--foreground) 11%, var(--background));
+    --color-neutral-300: color-mix(in oklab, var(--foreground) 20%, var(--background));
+    --color-neutral-400: color-mix(in oklab, var(--foreground) 32%, var(--background));
+    --color-neutral-500: color-mix(in oklab, var(--foreground) 46%, var(--background));
+    --color-neutral-600: color-mix(in oklab, var(--foreground) 58%, var(--background));
+    --color-neutral-700: color-mix(in oklab, var(--foreground) 70%, var(--background));
+    --color-neutral-800: color-mix(in oklab, var(--foreground) 82%, var(--background));
+    --color-neutral-900: color-mix(in oklab, var(--foreground) 91%, var(--background));
+
+    --color-accent-100: var(--primary-soft);
+    --color-accent-200: color-mix(in oklab, var(--primary) 18%, var(--card));
+    --color-accent-300: color-mix(in oklab, var(--primary) 32%, var(--card));
+    --color-accent-400: color-mix(in oklab, var(--primary) 60%, var(--card));
+    --color-accent-500: var(--primary);
+    --color-accent-600: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+    --color-accent-700: color-mix(in oklab, var(--primary) 78%, var(--foreground));
+    --color-accent-800: color-mix(in oklab, var(--primary) 55%, var(--foreground));
+    --color-accent-900: color-mix(in oklab, var(--primary) 35%, var(--foreground));
+
+    --color-accent-2-100: var(--warning-soft);
+    --color-accent-2-200: color-mix(in oklab, var(--warning) 18%, var(--card));
+    --color-accent-2-300: color-mix(in oklab, var(--warning) 32%, var(--card));
+    --color-accent-2-400: color-mix(in oklab, var(--warning) 60%, var(--card));
+    --color-accent-2-500: var(--warning);
+    --color-accent-2-600: var(--warning);
+    --color-accent-2-700: var(--warning);
+    --color-accent-2-800: var(--warning);
+    --color-accent-2-900: var(--warning);
+
+    --font-heading: var(--font-display);
+    --font-heading-weight: 700;
+    --font-body: var(--font-sans);
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    --radius-sm: calc(var(--radius) - 6px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: calc(var(--radius) + 4px);
+
+    --shadow-sm: var(--elev-card);
+    --shadow-md: var(--elev-raised);
+    --shadow-lg: var(--elev-raised);
+  }
+
+  /* — element-defaults, alleen buiten [data-kit] — */
+  :where(h1, h2, h3, h4, h5, h6):not(:where([data-kit], [data-kit] *)) {
+    margin: 0 0 var(--space-2);
+  }
+  :where(h1):not(:where([data-kit] *)) { font-size: clamp(2rem, 1.55rem + 2vw, 2.75rem); }
+  :where(h2):not(:where([data-kit] *)) { font-size: clamp(1.625rem, 1.35rem + 1.2vw, 2rem); }
+  :where(h3):not(:where([data-kit] *)) { font-size: 1.5rem; }
+  :where(h4):not(:where([data-kit] *)) { font-size: 1.25rem; }
+  :where(h5):not(:where([data-kit] *)) { font-size: 1rem; }
+  :where(h6):not(:where([data-kit] *)) {
+    font-size: 0.8125rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  :where(p):not(:where([data-kit] *)) { margin: 0 0 var(--space-3); }
+  :where(a):not(:where([data-kit] *, [data-app-shell] *)) {
+    color: var(--color-accent-700);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  :where(a):not(:where([data-kit] *, [data-app-shell] *)):hover { color: var(--primary); }
+  :where(figcaption):not(:where([data-kit] *)) {
+    font-size: 11px;
+    margin-top: var(--space-1);
+    color: var(--muted-foreground);
+  }
+
+  .text-muted-legacy,
+  .text-muted { color: var(--muted-foreground); }
+  .grayscale { filter: grayscale(1) contrast(1.08); }
+
+  /* — rules — */
+  .hr {
+    height: 1px;
+    border: 0;
+    margin: var(--space-4) 0;
+    background: var(--border);
+  }
+
+  /* — buttons — */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--foreground);
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    transition: background-color 150ms, border-color 150ms, color 150ms, transform 100ms;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.98); }
+  .btn svg { display: block; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: var(--primary-foreground); }
+  .btn-primary:hover { background: color-mix(in oklab, var(--primary) 88%, var(--foreground)); color: var(--primary-foreground); }
+  .btn-secondary { border-color: var(--border); background: var(--card); box-shadow: var(--elev-card); }
+  .btn-secondary:hover { background: var(--accent); }
+  .btn-ghost { color: var(--primary); padding-inline: 10px; }
+  .btn-ghost:hover { background: var(--primary-soft); color: var(--primary); }
+  .btn-icon { width: 40px; height: 40px; padding: 0; }
+  .btn-block { width: 100%; margin-top: var(--space-2); justify-content: flex-start; text-align: left; }
+
+  /* — forms — */
+  .field > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--foreground);
+  }
+  .input {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 16px; /* ≥16px: voorkomt iOS-zoom bij focus */
+    color: var(--foreground);
+    caret-color: var(--primary);
+    background: var(--card);
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  @media (min-width: 640px) {
+    .input { min-height: 40px; font-size: 14px; }
+  }
+  .input:hover { border-color: var(--muted-foreground); }
+  .input:focus-visible {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);
+  }
+  textarea.input { min-height: 96px; resize: vertical; }
+  .radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+  .radio input, .seg-opt input {
+    position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+  }
+  .radio .dot {
+    width: 18px; height: 18px; flex: none; border-radius: 50%;
+    border: 1.5px solid var(--input);
+  }
+  .radio:hover .dot { border-color: var(--primary); }
+  .radio input:checked + .dot {
+    border-color: var(--primary); background: var(--primary);
+    box-shadow: inset 0 0 0 4px var(--card);
+  }
+  .radio input:focus-visible + .dot { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .seg {
+    display: inline-flex; overflow: hidden; padding: 3px; gap: 3px;
+    background: var(--muted); border-radius: var(--radius-md);
+  }
+  .seg-opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; font-size: 13px; font-weight: 500; cursor: pointer;
+    border-radius: calc(var(--radius-md) - 3px);
+  }
+  .seg-opt:has(input:checked) { background: var(--card); color: var(--foreground); box-shadow: var(--elev-card); }
+  .seg-opt:not(:has(input:checked)):hover { color: var(--foreground); }
+  .seg-opt:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+  /* — cards — */
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow: var(--elev-card);
+  }
+  .card-kicker {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+  }
+  .card-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 1.15;
+  }
+  .card-body { margin: 0; font-size: 14px; color: var(--muted-foreground); flex: 1; }
+  .card-meta {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .elev-sm { box-shadow: var(--elev-card); }
+  .elev-md { box-shadow: var(--elev-raised); }
+  .elev-lg { box-shadow: var(--elev-raised); }
+
+  /* — tags — */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .tag-accent { background: var(--primary-soft); color: var(--primary); }
+  .tag-accent-2 { background: var(--warning-soft); color: var(--warning); }
+  .tag-neutral { background: var(--muted); color: var(--muted-foreground); }
+  .tag-outline { border: 1px solid color-mix(in oklab, var(--primary) 45%, transparent); color: var(--primary); }
+
+  /* — navigation (oude NavBar; niet meer gebruikt door de app-shell) — */
+  .nav {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-brand { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin-right: auto; }
+  .nav a { color: inherit; text-decoration: none; font-size: 14px; }
+  .nav a:hover, .nav a[aria-current='page'] { color: var(--primary); }
+
+  /* — tables — */
+  .table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .table th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .table td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  .table tbody tr:hover { background: color-mix(in oklab, var(--foreground) 3%, transparent); }
+
+  /* — dialog — */
+  .dialog-backdrop {
+    position: fixed; inset: 0; display: grid; place-items: center; z-index: 50;
+    padding: var(--space-4);
+    background: rgb(7 17 42 / 0.55);
+  }
+  .dialog {
+    width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+    padding: var(--space-6); border-radius: var(--radius-lg);
+    background: var(--popover); color: var(--popover-foreground);
+    border: 1px solid var(--border); box-shadow: var(--elev-raised);
+  }
+  .dialog-title { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+  .dialog-body { font-size: 14px; color: var(--muted-foreground); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+}

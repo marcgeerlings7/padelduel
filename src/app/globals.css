@@ -1,22 +1,302 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ══════════════════════════════════════════════════════════════════════════
+   Padel Ladder — "Court" design system (Tailwind v4, CSS-first)
+   Documentatie: docs/Design_System.md
 
-/* Kleine, pagina-brede overrides bovenop design-system.css — zelfde als
-   het <style>-blok in de oorspronkelijke Modernist-mockup. */
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-body);
+   Laagvolgorde (belangrijk): legacy zit ONDER components/utilities, zodat
+   Tailwind-utilities altijd winnen van de oude Modernist-klassen
+   (.btn, .card, .tag, …) tijdens de migratie.
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/legacy.css";
+
+/* Legacy-klasse `.text-muted` (= gedempte tekstkleur) botst met de
+   Tailwind-utility `text-muted` (= tekst in de *achtergrond*kleur --muted,
+   onleesbaar). Utility niet genereren; gebruik in nieuwe code
+   `text-muted-foreground`. */
+@source not inline("text-muted");
+
+/* Class-gebaseerde dark mode (next-themes zet .dark op <html>; standaard volgt
+   die prefers-color-scheme). Tijdens de migratie alleen actief op pagina's
+   met [data-kit] — zie de .dark-tokens hieronder. */
+@custom-variant dark (&:where(.dark:has([data-kit]), .dark:has([data-kit]) *));
+
+/* ── 1. Ruwe tokens ──────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* Kleuren: "Court" — baanblauw, ball-optic geel, glas-grijs. */
+  --background: #f2f4f8;           /* glas-grijs, app-ondergrond */
+  --foreground: #0a1733;           /* ink */
+  --card: #ffffff;
+  --card-foreground: #0a1733;
+  --popover: #ffffff;
+  --popover-foreground: #0a1733;
+  --primary: #1f45c8;              /* court blue — merk + primaire acties */
+  --primary-foreground: #ffffff;
+  --primary-soft: #e6ecfb;         /* getinte achtergrond voor primaire info */
+  --secondary: #e7ebf2;
+  --secondary-foreground: #0a1733;
+  --muted: #e9edf3;
+  --muted-foreground: #52607a;
+  --accent: #e9edf3;               /* shadcn-semantiek: subtiele hover-ondergrond */
+  --accent-foreground: #0a1733;
+  --destructive: #c62a34;
+  --destructive-foreground: #ffffff;
+  --border: #dde3ec;
+  --input: #7c889f;                /* ≥3:1 tegen card (WCAG 1.4.11) */
+  --ring: #1f45c8;
+
+  --ball: #d6f23c;                 /* optic yellow — spaarzaam: #1, actieve tab */
+  --ball-foreground: #0a1733;
+  --court: #132f9a;                /* diep baanblauw — "hero"-vlakken */
+  --court-foreground: #ffffff;
+  --court-muted: #b8c6f5;
+
+  --win: #0f7a3d;
+  --win-soft: #e3f4ea;
+  --loss: #b3232d;
+  --loss-soft: #fbe6e7;
+  --warning: #8f5100;
+  --warning-soft: #fbf0dc;
+
+  --radius: 0.75rem;
+
+  --elev-card: 0 1px 0 rgb(10 23 51 / 0.03), 0 1px 3px rgb(10 23 51 / 0.07);
+  --elev-raised: 0 2px 4px rgb(10 23 51 / 0.05), 0 12px 32px -12px rgb(10 23 51 / 0.28);
+  --elev-nav: 0 -1px 0 rgb(10 23 51 / 0.06), 0 -8px 24px -12px rgb(10 23 51 / 0.18);
+
+  /* Charts (Bklit) */
+  --chart-1: #1f45c8;
+  --chart-2: #0f9d8f;
+  --chart-3: #c77700;
+  --chart-4: #b3232d;
+  --chart-5: #7c889f;
+  --chart-background: var(--card);
+  --chart-foreground: var(--foreground);
+  --chart-foreground-muted: var(--muted-foreground);
+  --chart-label: var(--muted-foreground);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
+  --chart-crosshair: var(--muted-foreground);
+  --chart-grid: #e3e8f0;
+  --chart-brush-border: var(--chart-grid);
+  --chart-indicator-color: var(--foreground);
+  --chart-indicator-secondary-color: var(--muted-foreground);
+  --chart-tooltip-background: rgb(10 23 51 / 0.92);
+  --chart-tooltip-foreground: #ffffff;
+  --chart-tooltip-muted: #b8c2d6;
+  --chart-marker-background: var(--card);
+  --chart-marker-border: var(--border);
+  --chart-marker-foreground: var(--foreground);
+  --chart-marker-badge-background: var(--primary);
+  --chart-marker-badge-foreground: var(--primary-foreground);
+  --chart-segment-background: var(--primary-soft);
+  --chart-segment-line: var(--primary);
+  --chart-scale-01: #eef2fb;
+  --chart-scale-02: #c9d5f5;
+  --chart-scale-03: #93aaeb;
+  --chart-scale-04: #5577dc;
+  --chart-scale-05: #1f45c8;
+  --chart-scale-pattern-color: #f2f4f8;
 }
-a {
-  color: var(--color-accent-700);
-  text-decoration: underline;
+
+/* Dark tokens gelden alleen zodra de huidige pagina gemigreerd is
+   ([data-kit] aanwezig). Legacy-pagina's hebben hardcoded lichte aannames
+   (witte hero-tekst via --color-bg e.d.) en blijven daarom licht tot ze
+   omgebouwd zijn. Na volledige migratie: vervang door `.dark`. */
+.dark:has([data-kit]) {
+  color-scheme: dark;
+
+  --background: #07112a;           /* nachtbaan-navy */
+  --foreground: #eaf0fb;
+  --card: #0e1b3d;
+  --card-foreground: #eaf0fb;
+  --popover: #111f45;
+  --popover-foreground: #eaf0fb;
+  --primary: #7c9bff;
+  --primary-foreground: #07112a;
+  --primary-soft: #16275a;
+  --secondary: #172651;
+  --secondary-foreground: #eaf0fb;
+  --muted: #142349;
+  --muted-foreground: #9aa8c4;
+  --accent: #172651;
+  --accent-foreground: #eaf0fb;
+  --destructive: #ff7a80;
+  --destructive-foreground: #07112a;
+  --border: #1e2d55;
+  --input: #50639a;
+  --ring: #d6f23c;                 /* focus = ball-geel: maximaal zichtbaar op navy */
+
+  --court: #15307f;
+  --court-muted: #b8c6f5;
+
+  --win: #3fd688;
+  --win-soft: #10343a;
+  --loss: #ff8a8f;
+  --loss-soft: #3a1c33;
+  --warning: #f5b94a;
+  --warning-soft: #33290f;
+
+  --elev-card: 0 0 0 1px rgb(255 255 255 / 0.02);
+  --elev-raised: 0 16px 40px -16px rgb(0 0 0 / 0.7);
+  --elev-nav: 0 -1px 0 rgb(255 255 255 / 0.05);
+
+  --chart-1: #7c9bff;
+  --chart-2: #3fd6c5;
+  --chart-3: #f5b94a;
+  --chart-4: #ff8a8f;
+  --chart-5: #9aa8c4;
+  --chart-grid: #1b2a52;
+  --chart-tooltip-background: rgb(234 240 251 / 0.95);
+  --chart-tooltip-foreground: #07112a;
+  --chart-tooltip-muted: #52607a;
+  --chart-scale-01: #101e44;
+  --chart-scale-02: #1d3375;
+  --chart-scale-03: #2f4fa8;
+  --chart-scale-04: #5577dc;
+  --chart-scale-05: #7c9bff;
+  --chart-scale-pattern-color: #07112a;
 }
-a:hover {
-  color: var(--color-accent);
+
+/* ── 2. Tailwind-theme (utilities: bg-primary, text-win, font-display, …) ── */
+@theme inline {
+  /* Tailwinds standaard "neutral"-palet is uitgeschakeld: de legacy-laag
+     gebruikt --color-neutral-* als thema-bewuste tussentinten. Gebruik in
+     nieuwe code de semantische kleuren hieronder. */
+  --color-neutral-*: initial;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ball: var(--ball);
+  --color-ball-foreground: var(--ball-foreground);
+  --color-court: var(--court);
+  --color-court-foreground: var(--court-foreground);
+  --color-court-muted: var(--court-muted);
+  --color-win: var(--win);
+  --color-win-soft: var(--win-soft);
+  --color-loss: var(--loss);
+  --color-loss-soft: var(--loss-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-grid: var(--chart-grid);
+
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-barlow-condensed), "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 6px);   /*  6px — badges in tabellen, kbd */
+  --radius-md: calc(var(--radius) - 2px);   /* 10px — buttons, inputs */
+  --radius-lg: var(--radius);               /* 12px — kleine cards, popovers */
+  --radius-xl: calc(var(--radius) + 4px);   /* 16px — cards / secties */
+  --radius-2xl: calc(var(--radius) + 10px); /* 22px — hero-vlakken, sheets */
+
+  --shadow-card: var(--elev-card);
+  --shadow-raised: var(--elev-raised);
+  --shadow-nav: var(--elev-nav);
+
+  --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
 }
-.tag {
-  white-space: nowrap;
+
+/* Eigen utilities */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
+@utility font-score {
+  /* Grote cijfers: ratings, rang, uitslagen. Condensed display, tabular. */
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility court-lines {
+  /* Padelbaan van bovenaf (liggend): net in het midden, servicelijnen op
+     15%/85%, middenlijn tussen de servicelijnen. Alleen voor grote
+     court-vlakken (SectionCard variant="court"), niet voor kleine kaarten. */
+  background-image:
+    linear-gradient(to right, transparent calc(50% - 1px), rgb(255 255 255 / 0.2) calc(50% - 1px), rgb(255 255 255 / 0.2) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to right, transparent calc(15% - 0.5px), rgb(255 255 255 / 0.11) calc(15% - 0.5px), rgb(255 255 255 / 0.11) calc(15% + 0.5px), transparent calc(15% + 0.5px)),
+    linear-gradient(to right, transparent calc(85% - 0.5px), rgb(255 255 255 / 0.11) calc(85% - 0.5px), rgb(255 255 255 / 0.11) calc(85% + 0.5px), transparent calc(85% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(50% - 0.5px), rgb(255 255 255 / 0.11) calc(50% - 0.5px), rgb(255 255 255 / 0.11) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  background-size: 100% 100%, 100% 100%, 100% 100%, 70% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* ── 3. Base ─────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 60%, transparent);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
