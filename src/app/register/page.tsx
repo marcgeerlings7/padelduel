@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/client/api";
@@ -20,6 +21,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const hydrated = useHydrated();
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   // Gezet als het account wel is aangemaakt, maar de activatiemail niet
   // verstuurd kon worden (API: emailSent === false).
@@ -181,7 +183,7 @@ export default function RegisterPage() {
         {error && (
           <p style={{ color: "var(--color-accent-700)", fontSize: 13, marginTop: 8, marginBottom: 16 }}>{error}</p>
         )}
-        <button type="submit" disabled={submitting} className="btn btn-primary btn-block" style={{ marginTop: 16 }}>
+        <button type="submit" disabled={submitting || !hydrated} className="btn btn-primary btn-block" style={{ marginTop: 16 }}>
           {submitting ? "Bezig..." : "Account aanmaken"}
         </button>
       </form>
