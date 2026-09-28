@@ -283,4 +283,5 @@ Vier door de PO goedgekeurde uitbreidingen na de v1-scope. UI bewust functioneel
 
 ### Overig
 - `.eslintrc.json` heeft nu `"root": true`, zodat ESLint in een geneste git-worktree niet ook de config van de bovenliggende checkout laadt (gaf een plugin-conflict). Geen gedragswijziging in de hoofd-checkout.
+- `playwright.config.ts`: Chromium start met `--disable-dev-shm-usage`. De devcontainer heeft maar 64 MB `/dev/shm`; onder geheugendruk (meerdere agents/dev-servers tegelijk) crashte Chromium sporadisch ("Target crashed"/"Page crashed") bij de specs met meerdere browsercontexts.
 - Nieuwe/uitgebreide e2e-tests: `04-disputes` (overturned → nieuwe score → bevestigen → ELO), `05-availability-and-admin` (vrij blok toevoegen/bewerken/verwijderen door beide leden), `07-admin-users` (promoveren/degraderen, laatste-admin-regel, 403 voor een gewone gebruiker). Let op: de replay-test in `04` wijzigt de rating van Global Gladiators (onderste ladderrij); `01-ladder` draait in de volledige suite eerder (alfabetische volgorde, `workers: 1`).
