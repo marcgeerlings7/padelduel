@@ -39,6 +39,7 @@ const {
   proposeChallenge,
   respondToChallenge,
   expireOverdueChallenges,
+  listChallengesForDuo,
 } = await import("@/server/services/challengeService");
 
 const CONFIG = {
@@ -266,5 +267,38 @@ describe("expireOverdueChallenges", () => {
     expect(secondRunResults).toEqual([null]);
     expect(mockPrisma.ratingHistory.create).toHaveBeenCalledTimes(1); // nog steeds maar 1x
     expect(mockPrisma.duo.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("listChallengesForDuo (post-v1: meerdere matches per challenge)", () => {
+  it("geeft de actieve (niet-voided) match als `match` en eerdere voided pogingen apart terug", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([
+      {
+        id: "challenge-1",
+        status: "ACCEPTED",
+        matches: [
+          { id: "match-2", status: "AWAITING_CONFIRMATION" },
+          { id: "match-1", status: "VOIDED" },
+        ],
+      },
+      {
+        id: "challenge-2",
+        status: "ACCEPTED",
+        matches: [{ id: "match-3", status: "VOIDED" }],
+      },
+      { id: "challenge-3", status: "PENDING", matches: [] },
+    ]);
+
+    const result = await listChallengesForDuo("duo-a");
+
+    expect(result[0]).toMatchObject({
+      id: "challenge-1",
+      match: { id: "match-2" },
+      voidedMatches: [{ id: "match-1" }],
+    });
+    expect(result[0]).not.toHaveProperty("matches");
+    // Alleen voided matches -> match = null, zodat de UI opnieuw een score laat indienen
+    expect(result[1]).toMatchObject({ id: "challenge-2", match: null, voidedMatches: [{ id: "match-3" }] });
+    expect(result[2]).toMatchObject({ match: null, voidedMatches: [] });
   });
 });

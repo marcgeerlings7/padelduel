@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { applyMatchResult, applyForfeitPenalty } from "@/lib/elo";
 import {
@@ -84,27 +85,80 @@ export async function submitScore(
     return { id: existingByKey.id };
   }
 
-  const existingForChallenge = await prisma.match.findUnique({ where: { challengeId } });
-  if (existingForChallenge) {
-    throw new MatchError(
-      "Er is al een score ingediend voor deze challenge.",
-      "score_already_submitted",
-      400,
-    );
-  }
-
   const autoConfirmHours = await getConfigNumber("match_auto_confirm_hours");
-  const match = await prisma.match.create({
-    data: {
-      challengeId,
-      scoreRaw: serializeScore(sets),
-      submittedBy: actingUserId,
-      autoConfirmDeadline: new Date(Date.now() + autoConfirmHours * 60 * 60 * 1000),
-      idempotencyKey,
-    },
-  });
 
-  return { id: match.id };
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Rij-lock op de challenge: serialiseert score-indiening met de
+      // unplayed-timeout-job (die dezelfde lock neemt). Zo kan een challenge
+      // nooit tegelijk een nieuwe match krijgen én op unplayed_timeout gaan.
+      await lockChallengeRow(tx, challengeId);
+      const locked = await tx.challenge.findUniqueOrThrow({ where: { id: challengeId } });
+      if (locked.status !== "ACCEPTED") {
+        throw new MatchError(
+          "Score kan alleen ingediend worden voor een geaccepteerde challenge.",
+          "challenge_not_accepted",
+          400,
+        );
+      }
+      if (locked.matchDeadline && locked.matchDeadline < new Date()) {
+        throw new MatchError("De speeltermijn voor deze challenge is verstreken.", "match_deadline_passed", 400);
+      }
+
+      // Post-v1 (replay): een challenge mag meerdere matches hebben, maar
+      // hooguit één die niet `voided` is. Alleen als alle eerdere matches
+      // voided zijn (overturned dispute) mag er opnieuw een score komen.
+      const activeMatch = await tx.match.findFirst({
+        where: { challengeId, status: { not: "VOIDED" } },
+        select: { id: true },
+      });
+      if (activeMatch) {
+        throw new MatchError(
+          "Er is al een score ingediend voor deze challenge.",
+          "score_already_submitted",
+          400,
+        );
+      }
+
+      const match = await tx.match.create({
+        data: {
+          challengeId,
+          scoreRaw: serializeScore(sets),
+          submittedBy: actingUserId,
+          autoConfirmDeadline: new Date(Date.now() + autoConfirmHours * 60 * 60 * 1000),
+          idempotencyKey,
+        },
+      });
+      return { id: match.id };
+    });
+  } catch (err) {
+    // Vangnet voor een race tussen twee gelijktijdige submits: de unieke
+    // index op idempotency_key of de partial unique index "hooguit één
+    // niet-voided match per challenge" slaat aan.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const sameKey = await prisma.match.findUnique({ where: { idempotencyKey } });
+      if (sameKey && sameKey.challengeId === challengeId) {
+        return { id: sameKey.id };
+      }
+      throw new MatchError(
+        "Er is al een score ingediend voor deze challenge.",
+        "score_already_submitted",
+        400,
+      );
+    }
+    throw err;
+  }
+}
+
+type TxClient = Prisma.TransactionClient;
+
+/**
+ * `SELECT ... FOR UPDATE` op de challenge-rij. Gebruikt door zowel
+ * submitScore als expireOneUnplayedChallenge, zodat die twee elkaar
+ * uitsluiten (zie ELO_Algoritme.md §5: transactioneel en idempotent).
+ */
+async function lockChallengeRow(tx: TxClient, challengeId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "challenge" WHERE id = ${challengeId}::uuid FOR UPDATE`;
 }
 
 export async function respondToMatch(
@@ -296,11 +350,25 @@ export type UnplayedTimeoutResult = { challengeId: string; challengerDuoId: stri
 /**
  * Idempotent via compare-and-swap (WHERE status = ACCEPTED), analoog aan
  * de challenge-expiratiejob uit Sprint 2.
+ *
+ * Post-v1: neemt eerst dezelfde rij-lock als submitScore en controleert
+ * daarna (met een verse snapshot) opnieuw of er geen niet-voided match is
+ * en of de — mogelijk door een overturned dispute verlengde — deadline nog
+ * steeds verstreken is. Zo kan een net ingediende (replay-)score of een
+ * net verlengde termijn nooit alsnog tot een forfeit leiden.
  */
 async function expireOneUnplayedChallenge(challengeId: string): Promise<UnplayedTimeoutResult> {
   return prisma.$transaction(async (tx) => {
+    await lockChallengeRow(tx, challengeId);
+    const activeMatchCount = await tx.match.count({
+      where: { challengeId, status: { not: "VOIDED" } },
+    });
+    if (activeMatchCount > 0) {
+      return null;
+    }
+
     const guard = await tx.challenge.updateMany({
-      where: { id: challengeId, status: "ACCEPTED" },
+      where: { id: challengeId, status: "ACCEPTED", matchDeadline: { lt: new Date() } },
       data: { status: "UNPLAYED_TIMEOUT", respondedAt: new Date() },
     });
     if (guard.count === 0) {
@@ -348,11 +416,17 @@ async function expireOneUnplayedChallenge(challengeId: string): Promise<Unplayed
 
 export async function expireUnplayedChallenges(): Promise<UnplayedTimeoutResult[]> {
   // Challenges met status ACCEPTED, verstreken match_deadline, én zonder
-  // gekoppelde match (ongeacht status: als er wél een match is —
-  // awaiting_confirmation of disputed — is er al actie ondernomen en
-  // wordt NIET unplayed_timeout gezet, US-F5).
+  // niet-voided match (als er wél een match is — awaiting_confirmation of
+  // disputed — is er al actie ondernomen en wordt NIET unplayed_timeout
+  // gezet, US-F5). Post-v1: een challenge met uitsluitend voided matches
+  // (overturned dispute) telt als "nog niet gespeeld"; de speeltermijn is
+  // bij het overturnen opnieuw gestart (zie disputeService).
   const overdue = await prisma.challenge.findMany({
-    where: { status: "ACCEPTED", matchDeadline: { lt: new Date() }, match: null },
+    where: {
+      status: "ACCEPTED",
+      matchDeadline: { lt: new Date() },
+      matches: { none: { status: { not: "VOIDED" } } },
+    },
     select: { id: true },
   });
 

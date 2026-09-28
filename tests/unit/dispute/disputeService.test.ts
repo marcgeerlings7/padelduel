@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockPrisma = {
-  match: { findUnique: vi.fn(), updateMany: vi.fn() },
-  challenge: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+  match: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), updateMany: vi.fn() },
+  challenge: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), updateMany: vi.fn() },
   duoMembership: { findFirst: vi.fn() },
-  dispute: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  dispute: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   duo: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
   ratingHistory: { create: vi.fn() },
   auditLog: { create: vi.fn() },
@@ -35,6 +35,7 @@ const {
 const CONFIG: Record<string, number> = {
   forfeit_dispute_window_days: 5,
   forfeit_rating_penalty: 10,
+  challenge_match_deadline_days: 14,
 };
 
 function challenge(overrides: Record<string, unknown> = {}) {
@@ -157,23 +158,103 @@ describe("resolveMatchScoreDispute", () => {
     );
   });
 
-  it("overturned: zet de match op voided, geen ELO-verwerking", async () => {
+  function setupOverturnScenario(matchDeadline: Date | null) {
     mockPrisma.dispute.findUnique.mockResolvedValueOnce({
       id: "dispute-1",
       subject: "MATCH_SCORE",
       matchId: "match-1",
       status: "OPEN",
     });
+    mockPrisma.dispute.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.match.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.match.findUniqueOrThrow.mockResolvedValueOnce({ id: "match-1", challengeId: "challenge-1" });
+    mockPrisma.challenge.findUniqueOrThrow.mockResolvedValueOnce(
+      challenge({ status: "ACCEPTED", matchDeadline }),
+    );
+    mockPrisma.challenge.updateMany.mockResolvedValueOnce({ count: 1 });
+  }
+
+  it("overturned: zet de match op voided, geen ELO-verwerking, challenge blijft accepted (replay mogelijk)", async () => {
+    setupOverturnScenario(new Date(Date.now() - 60_000));
 
     await resolveMatchScoreDispute("dispute-1", "admin-1", "overturned");
 
     expect(mockFinalizeMatch).not.toHaveBeenCalled();
-    expect(mockPrisma.match.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: "VOIDED" } }),
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.match.updateMany).toHaveBeenCalledWith({
+      where: { id: "match-1", status: "DISPUTED" },
+      data: { status: "VOIDED" },
+    });
+    expect(mockPrisma.dispute.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dispute-1", status: "OPEN" },
+        data: expect.objectContaining({ status: "RESOLVED_OVERTURNED", resolvedBy: "admin-1" }),
+      }),
     );
-    expect(mockPrisma.dispute.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "RESOLVED_OVERTURNED" }) }),
+    expect(mockPrisma.challenge.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "challenge-1", status: "ACCEPTED" } }),
     );
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "dispute_resolved",
+          payload: expect.objectContaining({ resolution: "overturned", replayAllowed: true }),
+        }),
+      }),
+    );
+  });
+
+  it("overturned: herstart de speeltermijn (nu + challenge_match_deadline_days) als de oude al verstreken is", async () => {
+    setupOverturnScenario(new Date(Date.now() - 60_000));
+    const before = Date.now();
+
+    await resolveMatchScoreDispute("dispute-1", "admin-1", "overturned");
+
+    const newDeadline = mockPrisma.challenge.updateMany.mock.calls[0][0].data.matchDeadline as Date;
+    const expected = before + 14 * 24 * 60 * 60 * 1000;
+    expect(newDeadline.getTime()).toBeGreaterThanOrEqual(expected);
+    expect(newDeadline.getTime()).toBeLessThan(expected + 5_000);
+  });
+
+  it("overturned: verkort een nog lopende, langere speeltermijn nooit", async () => {
+    const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    setupOverturnScenario(farFuture);
+
+    await resolveMatchScoreDispute("dispute-1", "admin-1", "overturned");
+
+    expect(mockPrisma.challenge.updateMany.mock.calls[0][0].data.matchDeadline).toEqual(farFuture);
+  });
+
+  it("overturned: weigert (en rolt terug) als de match niet meer disputed is", async () => {
+    mockPrisma.dispute.findUnique.mockResolvedValueOnce({
+      id: "dispute-1",
+      subject: "MATCH_SCORE",
+      matchId: "match-1",
+      status: "OPEN",
+    });
+    mockPrisma.dispute.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.match.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(resolveMatchScoreDispute("dispute-1", "admin-1", "overturned")).rejects.toMatchObject({
+      code: "match_not_disputed",
+    });
+    expect(mockPrisma.challenge.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("overturned: weigert een gelijktijdige tweede afhandeling (dispute niet meer open)", async () => {
+    mockPrisma.dispute.findUnique.mockResolvedValueOnce({
+      id: "dispute-1",
+      subject: "MATCH_SCORE",
+      matchId: "match-1",
+      status: "OPEN",
+    });
+    mockPrisma.dispute.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(resolveMatchScoreDispute("dispute-1", "admin-1", "overturned")).rejects.toMatchObject({
+      code: "dispute_not_open",
+    });
+    expect(mockPrisma.match.updateMany).not.toHaveBeenCalled();
   });
 
   it("weigert een dispute die al is afgehandeld", async () => {

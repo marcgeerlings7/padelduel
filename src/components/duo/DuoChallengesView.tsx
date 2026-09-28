@@ -23,7 +23,9 @@ type Challenge = {
   challengedDuo: ChallengeDuo;
   responseDeadline: string;
   matchDeadline: string | null;
+  // Actieve (niet-voided) match; voided pogingen staan in voidedMatches.
   match: MatchSummary | null;
+  voidedMatches: MatchSummary[];
   dispute: DisputeSummary | null;
 };
 
@@ -344,6 +346,12 @@ export function DuoChallengesView({ duoId }: { duoId: string }) {
                 </div>
               </div>
 
+              {canSubmitScore && c.voidedMatches.length > 0 && (
+                <p className="text-muted" style={{ fontSize: 13 }}>
+                  Eerdere score ({c.voidedMatches[0].scoreRaw}) is ongeldig verklaard door een admin — speel
+                  opnieuw en dien een nieuwe score in.
+                </p>
+              )}
               {canSubmitScore && <ScoreForm challengeId={c.id} onSubmitted={reload} />}
               {canOpenMatchDispute && (
                 <DisputeForm submitPath={`/api/matches/${c.match!.id}/disputes`} onSubmitted={reload} />

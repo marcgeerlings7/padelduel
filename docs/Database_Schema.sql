@@ -179,7 +179,9 @@ CREATE INDEX idx_challenge_accepted_deadline ON challenge (match_deadline) WHERE
 -- ---------------------------------------------------------
 CREATE TABLE match (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    challenge_id            UUID NOT NULL UNIQUE REFERENCES challenge(id),
+    -- Post-v1 (akkoord PO 2026-09-28): niet meer UNIQUE — zie de partial
+    -- unique index hieronder (replay na een voided match).
+    challenge_id            UUID NOT NULL REFERENCES challenge(id),
     score_raw               VARCHAR(50) NOT NULL,
     status                  match_status NOT NULL DEFAULT 'awaiting_confirmation',
     submitted_by            UUID NOT NULL REFERENCES app_user(id),
@@ -191,6 +193,10 @@ CREATE TABLE match (
 );
 
 CREATE INDEX idx_match_status ON match (status);
+CREATE INDEX idx_match_challenge ON match (challenge_id);
+-- Hooguit één niet-voided match per challenge; voided matches (overturned
+-- dispute) blijven als audit-spoor staan en blokkeren een nieuwe poging niet.
+CREATE UNIQUE INDEX idx_match_challenge_not_voided ON match (challenge_id) WHERE status <> 'voided';
 
 -- ---------------------------------------------------------
 -- RATING_HISTORY

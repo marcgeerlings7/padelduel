@@ -237,15 +237,28 @@ export async function expireOverdueChallenges(): Promise<ExpireResult[]> {
   return results;
 }
 
+/**
+ * Post-v1: een challenge kan meerdere matches hebben (replay na een
+ * overturned dispute). De response behoudt het bestaande `match`-veld
+ * (de actieve, niet-voided match, of null) zodat clients niet hoeven te
+ * weten dat het intern 1:n is; `voidedMatches` bevat de ongeldig
+ * verklaarde eerdere pogingen (nieuwste eerst) voor weergave/audit.
+ */
 export async function listChallengesForDuo(duoId: string) {
-  return prisma.challenge.findMany({
+  const challenges = await prisma.challenge.findMany({
     where: { OR: [{ challengerDuoId: duoId }, { challengedDuoId: duoId }] },
     include: {
       challengerDuo: true,
       challengedDuo: true,
-      match: { include: { dispute: true } },
+      matches: { include: { dispute: true }, orderBy: { submittedAt: "desc" } },
       dispute: true,
     },
     orderBy: { createdAt: "desc" },
   });
+
+  return challenges.map(({ matches, ...challenge }) => ({
+    ...challenge,
+    match: matches.find((m) => m.status !== "VOIDED") ?? null,
+    voidedMatches: matches.filter((m) => m.status === "VOIDED"),
+  }));
 }
