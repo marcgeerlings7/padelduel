@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/currentUser";
-import { updateAvailabilitySchema } from "@/lib/availability/validation";
+import { updateAvailabilitySchema, availabilityIdSchema } from "@/lib/availability/validation";
 import { jsonError } from "@/lib/http";
 import {
   updateAvailability,
@@ -11,6 +11,9 @@ import {
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser(request);
   if (!user) return jsonError("Niet ingelogd.", 401, "unauthorized");
+  if (!availabilityIdSchema.safeParse(params.id).success) {
+    return jsonError("Beschikbaarheidsblok niet gevonden.", 404, "not_found");
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = updateAvailabilitySchema.safeParse(body);
@@ -28,6 +31,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser(request);
   if (!user) return jsonError("Niet ingelogd.", 401, "unauthorized");
+  if (!availabilityIdSchema.safeParse(params.id).success) {
+    return jsonError("Beschikbaarheidsblok niet gevonden.", 404, "not_found");
+  }
 
   try {
     await deleteAvailability(params.id, user.id);

@@ -61,4 +61,52 @@ test.describe("Beschikbaarheid & externe API (Epic H)", () => {
     await ctx11.close();
     await ctxAdmin.close();
   });
+
+  // Post-v1 (US-H1/H2): vrije tijden + bewerken, door beide duo-leden.
+  test("duo-lid voegt een vrij tijdsblok toe, bewerkt het, en het andere lid verwijdert het", async ({ browser }) => {
+    const DUO_AVAILABILITY = "/duos/00000000-0000-4000-8000-200000000006/availability"; // Drop Shot Dynamo
+    const ctx11 = await browser.newContext();
+    const ctx12 = await browser.newContext();
+    const page11 = await ctx11.newPage();
+    const page12 = await ctx12.newPage();
+    await login(page11, "user11@example.com");
+    await login(page12, "user12@example.com");
+
+    // user12 voegt een vrij, niet-terugkerend blok toe
+    await page12.goto(DUO_AVAILABILITY);
+    const addForm = page12.locator("form", { has: page12.getByRole("button", { name: "Toevoegen" }) });
+    await addForm.getByLabel("Dag").selectOption({ label: "Woensdag" });
+    await addForm.getByLabel("Van").fill("19:30");
+    await addForm.getByLabel("Tot").fill("21:15");
+    await addForm.getByLabel("Vast terugkerend (elke week)").uncheck();
+    await addForm.getByRole("button", { name: "Toevoegen" }).click();
+    const created = page12.locator("li", { hasText: "Woensdag 19:30–21:15" });
+    await expect(created).toBeVisible();
+    await expect(created).toContainText("Niet vast terugkerend");
+
+    // Ongeldige bewerking wordt geweigerd met een melding, geldige wordt opgeslagen
+    await created.getByRole("button", { name: "Bewerken" }).click();
+    const editForm = page12.locator("form", { has: page12.getByRole("button", { name: "Opslaan" }) });
+    await editForm.getByLabel("Tot").fill("19:00");
+    await editForm.getByRole("button", { name: "Opslaan" }).click();
+    await expect(page12.getByText("De eindtijd moet na de begintijd liggen.")).toBeVisible();
+    await editForm.getByLabel("Van").fill("20:00");
+    await editForm.getByLabel("Tot").fill("22:00");
+    await editForm.getByLabel("Vast terugkerend (elke week)").check();
+    await editForm.getByRole("button", { name: "Opslaan" }).click();
+    const edited = page12.locator("li", { hasText: "Woensdag 20:00–22:00" });
+    await expect(edited).toBeVisible();
+    await expect(edited).toContainText("Elke week");
+    await expect(page12.locator("li", { hasText: "Woensdag 19:30–21:15" })).toHaveCount(0);
+
+    // Het andere duo-lid ziet het bewerkte blok en verwijdert het
+    await page11.goto(DUO_AVAILABILITY);
+    const seenBy11 = page11.locator("li", { hasText: "Woensdag 20:00–22:00" });
+    await expect(seenBy11).toBeVisible();
+    await seenBy11.getByRole("button", { name: "Verwijderen" }).click();
+    await expect(page11.getByText("Nog geen beschikbaarheid doorgegeven.")).toBeVisible();
+
+    await ctx11.close();
+    await ctx12.close();
+  });
 });
