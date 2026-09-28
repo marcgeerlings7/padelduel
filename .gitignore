@@ -39,3 +39,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*
+
+# graphify (afgeleid, lokaal opnieuw op te bouwen met `graphify update .`)
+/graphify-out/

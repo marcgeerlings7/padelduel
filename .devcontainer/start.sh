@@ -79,6 +79,15 @@ if ! command -v claude >/dev/null 2>&1; then
     || echo "[start] Claude Code CLI-installatie mislukt — draai: npm install -g @anthropic-ai/claude-code"
 fi
 
+# --- 4c. graphify (knowledge graph voor Claude Code, hooks in .claude/settings.json) ---
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v graphify >/dev/null 2>&1; then
+  command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+  uv tool install "graphifyy[sql]" >/dev/null 2>&1 \
+    || echo "[start] graphify-installatie mislukt — draai: uv tool install 'graphifyy[sql]'"
+fi
+command -v graphify >/dev/null 2>&1 && graphify update . >/dev/null 2>&1
+
 # --- 5. Vercel CLI: installeren (idempotent) + inlog-status checken ---
 # `vercel login` opent een echte browser-popup/magic-link-flow en vraagt
 # interactief om invoer (e-mailadres of auth-provider-keuze) — dat kan
