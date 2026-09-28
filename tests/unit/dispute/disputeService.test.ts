@@ -152,6 +152,7 @@ describe("resolveMatchScoreDispute", () => {
     });
 
     await resolveMatchScoreDispute("dispute-1", "admin-1", "upheld", "leek terecht");
+    expect(mockNotify).toHaveBeenCalledWith("dispute-1");
 
     expect(mockFinalizeMatch).toHaveBeenCalledWith(
       "match-1",
@@ -185,6 +186,7 @@ describe("resolveMatchScoreDispute", () => {
     setupOverturnScenario(new Date(Date.now() - 60_000));
 
     await resolveMatchScoreDispute("dispute-1", "admin-1", "overturned");
+    expect(mockNotify).toHaveBeenCalledWith("dispute-1");
 
     expect(mockFinalizeMatch).not.toHaveBeenCalled();
     expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
@@ -289,6 +291,7 @@ describe("resolveForfeitDispute", () => {
     mockPrisma.challenge.findUniqueOrThrow.mockResolvedValueOnce(challenge());
 
     await resolveForfeitDispute("dispute-2", "admin-1", "upheld");
+    expect(mockNotify).toHaveBeenCalledWith("dispute-2");
 
     expect(mockPrisma.duo.update).not.toHaveBeenCalled();
     expect(mockPrisma.ratingHistory.create).not.toHaveBeenCalled();

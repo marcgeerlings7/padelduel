@@ -20,7 +20,8 @@ export const requestPostponementSchema = z
   })
   .strict();
 
-export type RequestPostponementInput = z.infer<typeof requestPostponementSchema>;
+/** Service-invoer (de route geeft het geparste schema door). */
+export type RequestPostponementInput = { days: number; reason?: string; duoId?: string };
 
 export const answerPostponementSchema = z
   .object({

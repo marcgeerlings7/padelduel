@@ -93,6 +93,13 @@ describe("proposeChallenge", () => {
         data: expect.objectContaining({ challengerDuoId: "duo-a", challengedDuoId: "duo-b" }),
       }),
     );
+    // KNLTB-aanvullingen: e-mail naar het uitgedaagde duo ná het aanmaken.
+    expect(mockNotify).toHaveBeenCalledWith("challenge-1");
+  });
+
+  it("stuurt geen notificatie als het uitdagen geweigerd wordt", async () => {
+    await expect(proposeChallenge("duo-a", "duo-a", "user-1")).rejects.toBeDefined();
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it("weigert een duo dat zichzelf uitdaagt", async () => {

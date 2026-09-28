@@ -13,6 +13,10 @@ erDiagram
     USER ||--o{ MATCH : "dient score in / bevestigt"
     USER ||--o{ DISPUTE : "meldt / behandelt"
     REGION ||--o{ API_CLIENT : "scope voor"
+    CHALLENGE ||--o{ CHALLENGE_POSTPONEMENT : "kan uitstel hebben (max. 1 pending)"
+    DUO ||--o{ CHALLENGE_POSTPONEMENT : "vraagt uitstel"
+    USER ||--o| NOTIFICATION_PREFERENCE : "stelt in"
+    USER ||--o{ NOTIFICATION_LOG : "ontvangt"
 
     USER {
         uuid id PK
@@ -21,6 +25,8 @@ erDiagram
         string role
         boolean is_active
         timestamp created_at
+        string display_name
+        int knltb_level
     }
 
     DUO_MEMBERSHIP {
@@ -42,6 +48,7 @@ erDiagram
         timestamp dissolution_requested_at
         timestamp dissolved_at
         timestamp created_at
+        string category
     }
 
     REGION {
@@ -72,6 +79,9 @@ erDiagram
         timestamp submitted_at
         timestamp confirmed_at
         timestamp auto_confirm_deadline
+        string result_type
+        string conceding_side
+        string played_score_raw
     }
 
     RATING_HISTORY {
@@ -114,5 +124,39 @@ erDiagram
         string api_key_hash
         uuid region_id FK
         boolean is_active
+        timestamp created_at
+    }
+
+    CHALLENGE_POSTPONEMENT {
+        uuid id PK
+        uuid challenge_id FK
+        uuid requested_by_duo_id FK
+        uuid requested_by_user_id FK
+        int requested_days
+        string reason
+        string status
+        uuid responded_by_user_id FK
+        timestamp previous_match_deadline
+        timestamp new_match_deadline
+        timestamp created_at
+        timestamp responded_at
+    }
+
+    NOTIFICATION_PREFERENCE {
+        uuid user_id PK
+        boolean challenge_received
+        boolean challenge_response_reminder
+        boolean match_deadline_reminder
+        boolean score_confirmation
+        boolean dispute_resolved
+        boolean postponement
+    }
+
+    NOTIFICATION_LOG {
+        uuid id PK
+        uuid user_id FK
+        string type
+        uuid entity_id
+        string occurrence_key
         timestamp created_at
     }

@@ -88,7 +88,7 @@ function isInProgressSet({ challengerGames: a, challengedGames: b }: SetScore): 
 }
 
 /** Maakt een lopende set af in het voordeel van de niet-opgevende kant. */
-export function completeInProgressSet({ w, r }: OrientedSet): OrientedSet {
+export function completeInProgressSet({ r }: OrientedSet): OrientedSet {
   if (r <= 4) return { w: 6, r };
   if (r === 5) return { w: 7, r: 5 };
   return { w: 7, r: 6 };
