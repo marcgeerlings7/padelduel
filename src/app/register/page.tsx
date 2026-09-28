@@ -21,6 +21,9 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  // Gezet als het account wel is aangemaakt, maar de activatiemail niet
+  // verstuurd kon worden (API: emailSent === false).
+  const [emailWarning, setEmailWarning] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
 
@@ -52,10 +55,11 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await apiFetch<{ message: string }>("/api/auth/register", {
+      const result = await apiFetch<{ message: string; emailSent?: boolean }>("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
+      setEmailWarning(result.emailSent === false ? result.message : null);
       setRegisteredEmail(email);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Er is iets misgegaan.");
@@ -90,10 +94,17 @@ export default function RegisterPage() {
         <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 12px" }}>
           Controleer je e-mail
         </h1>
-        <p style={{ margin: "0 0 8px", color: "var(--color-neutral-700)", fontSize: 14, lineHeight: 1.6 }}>
-          We hebben een activatielink gestuurd naar <strong>{registeredEmail}</strong>. Klik op de link
-          om je account te activeren — daarna kun je inloggen.
-        </p>
+        {!emailWarning && (
+          <p style={{ margin: "0 0 8px", color: "var(--color-neutral-700)", fontSize: 14, lineHeight: 1.6 }}>
+            We hebben een activatielink gestuurd naar <strong>{registeredEmail}</strong>. Klik op de link
+            om je account te activeren — daarna kun je inloggen.
+          </p>
+        )}
+        {emailWarning && (
+          <p role="alert" style={{ margin: "0 0 8px", color: "var(--color-accent-700)", fontSize: 13 }}>
+            {emailWarning}
+          </p>
+        )}
         <p style={{ margin: "0 0 24px", color: "var(--color-neutral-600)", fontSize: 13 }}>
           Geen e-mail gekregen? Controleer je spam-map, of vraag hieronder een nieuwe link aan.
         </p>

@@ -35,6 +35,7 @@ const { register, activate, resendActivation, login, AuthError } = await import(
 beforeEach(() => {
   vi.clearAllMocks();
   __clearRateLimitStoreForTests();
+  mockSendEmail.mockResolvedValue({ ok: true, provider: "console" });
   mockGetConfigNumber.mockImplementation(async (key: string) => {
     if (key === "login_max_attempts") return 3;
     if (key === "login_lockout_minutes") return 15;
@@ -57,6 +58,22 @@ describe("register", () => {
     const createArgs = mockPrisma.user.create.mock.calls[0][0];
     expect(createArgs.data.passwordHash).not.toBe("Wachtwoord1");
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("geeft emailSent: true terug bij een geslaagde verzending", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.create.mockResolvedValueOnce({ id: "user-1", email: "nieuw@example.com" });
+
+    await expect(register("nieuw@example.com", "Wachtwoord1")).resolves.toEqual({ emailSent: true });
+  });
+
+  it("maakt het account wél aan en geeft emailSent: false terug als de mail niet verstuurd kon worden (geen 500)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.user.create.mockResolvedValueOnce({ id: "user-1", email: "nieuw@example.com" });
+    mockSendEmail.mockResolvedValueOnce({ ok: false, provider: "resend", error: "HTTP 500" });
+
+    await expect(register("nieuw@example.com", "Wachtwoord1")).resolves.toEqual({ emailSent: false });
+    expect(mockPrisma.user.create).toHaveBeenCalledTimes(1);
   });
 
   it("geeft een generieke foutmelding bij een bestaand e-mailadres, zonder dit te bevestigen", async () => {
@@ -119,6 +136,17 @@ describe("resendActivation", () => {
 
     expect(messageUnknown).toBe(messageKnown);
     expect(mockSendEmail).toHaveBeenCalledTimes(1); // alleen voor het bekende, inactieve account
+  });
+
+  it("geeft ook bij een mislukte verzending hetzelfde generieke bericht (geen enumeratie)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "user-1", email: "x@example.com", isActive: false });
+    mockSendEmail.mockResolvedValueOnce({ ok: false, provider: "resend", error: "HTTP 500" });
+    const messageFailed = await resendActivation("x@example.com");
+
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    const messageUnknown = await resendActivation("onbekend@example.com");
+
+    expect(messageFailed).toBe(messageUnknown);
   });
 });
 
