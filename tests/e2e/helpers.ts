@@ -37,3 +37,27 @@ export async function apiPost(
     { path, body },
   );
 }
+
+/** Zoals apiPost, maar voor willekeurige methodes (GET/PATCH/DELETE). */
+export async function apiRequest(
+  page: Page,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; json: unknown }> {
+  return page.evaluate(
+    async ({ method, path, body }) => {
+      const token = window.localStorage.getItem("padel_ladder_session_token");
+      const response = await fetch(path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return { status: response.status, json: await response.json().catch(() => null) };
+    },
+    { method, path, body },
+  );
+}
