@@ -3,6 +3,9 @@ import { buildPairKey } from "@/lib/duo/pairKey";
 import { generateDuoName } from "@/lib/duo/nameGenerator";
 import { getTier } from "@/lib/elo";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { computeStartRating } from "@/lib/duo/startRating";
+import { publicDisplayName } from "@/lib/profile/displayName";
+import type { DuoCategoryName } from "@/lib/duo/validation";
 
 export class DuoError extends Error {
   constructor(
@@ -30,7 +33,7 @@ async function assertUnderMaxActiveDuos(userId: string, errorMessage: string): P
 
 export async function proposeDuo(
   proposerUserId: string,
-  params: { duoName?: string; regionSlug: string; invitedEmail: string },
+  params: { duoName?: string; regionSlug: string; invitedEmail: string; category?: DuoCategoryName },
 ): Promise<{ id: string }> {
   const duoName = params.duoName?.trim() || generateDuoName();
   const region = await prisma.region.findUnique({ where: { slug: params.regionSlug } });
@@ -104,6 +107,7 @@ export async function proposeDuo(
       proposedByUserId: proposerUserId,
       invitedUserId: invitedUser.id,
       invitationPairKey: pairKey,
+      category: params.category ?? null,
     },
   });
 
@@ -158,14 +162,34 @@ export async function respondToInvitation(
     throw new DuoError("Jullie hebben al een actief duo samen.", "duo_already_active", 400);
   }
 
+  const defaultStartRating = await getConfigNumber("default_start_rating");
+
   try {
     const duo = await prisma.$transaction(async (tx) => {
+      // KNLTB-aanvullingen: startrating = gemiddelde van beide spelers, elk
+      // op basis van hun ANDERE actieve duo's (of default_start_rating).
+      // Binnen de transactie gelezen, vlak vóór het aanmaken van het duo.
+      const ratingsOf = async (userId: string) =>
+        (
+          await tx.duo.findMany({
+            where: { isActive: true, memberships: { some: { userId, leftAt: null } } },
+            select: { currentRating: true },
+          })
+        ).map((d) => d.currentRating);
+      const [playerARatings, playerBRatings] = await Promise.all([
+        ratingsOf(invitation.proposedByUserId),
+        ratingsOf(invitation.invitedUserId),
+      ]);
+      const startRating = computeStartRating({ playerARatings, playerBRatings, defaultRating: defaultStartRating });
+
       const createdDuo = await tx.duo.create({
         data: {
           name: invitation.duoName,
           regionId: invitation.regionId,
           memberPairKey: invitation.invitationPairKey,
           isActive: true,
+          currentRating: startRating,
+          category: invitation.category,
         },
       });
       await tx.duoMembership.create({
@@ -248,16 +272,79 @@ export async function listMyDuos(userId: string) {
   return duos.map((duo) => ({ ...duo, tier: getTier(duo.currentRating, tierSize) }));
 }
 
+/**
+ * KNLTB-aanvullingen: elke uitnodiging bevat nu de PUBLIEKE naam van de
+ * andere speler (weergavenaam of neutrale fallback) — nooit het
+ * e-mailadres. Voorheen stonden er alleen user-id's in, waardoor de
+ * ontvanger niet kon zien wie hem/haar uitnodigde.
+ */
+const INVITATION_USERS_INCLUDE = {
+  proposedBy: { select: { id: true, displayName: true } },
+  invitedUser: { select: { id: true, displayName: true } },
+  region: { select: { id: true, name: true, slug: true } },
+} as const;
+
+type InvitationWithUsers = Awaited<
+  ReturnType<typeof prisma.duoInvitation.findMany<{ include: typeof INVITATION_USERS_INCLUDE }>>
+>[number];
+
+function toInvitationDto({ proposedBy, invitedUser, ...invitation }: InvitationWithUsers) {
+  return {
+    ...invitation,
+    proposedByName: publicDisplayName(proposedBy),
+    invitedUserName: publicDisplayName(invitedUser),
+  };
+}
+
 export async function listMyInvitations(userId: string) {
   const [received, sent] = await Promise.all([
     prisma.duoInvitation.findMany({
       where: { invitedUserId: userId, status: "PENDING" },
+      include: INVITATION_USERS_INCLUDE,
       orderBy: { createdAt: "desc" },
     }),
     prisma.duoInvitation.findMany({
       where: { proposedByUserId: userId, status: "PENDING" },
+      include: INVITATION_USERS_INCLUDE,
       orderBy: { createdAt: "desc" },
     }),
   ]);
-  return { received, sent };
+  return { received: received.map(toInvitationDto), sent: sent.map(toInvitationDto) };
+}
+
+/**
+ * KNLTB-aanvullingen: speltype van een bestaand duo instellen of wissen.
+ * Informatief (geen invloed op uitdaagregels); elk actief lid mag het
+ * wijzigen, vastgelegd in de audit-log.
+ */
+export async function setDuoCategory(
+  duoId: string,
+  actingUserId: string,
+  category: DuoCategoryName | null,
+): Promise<{ id: string; category: DuoCategoryName | null }> {
+  const duo = await prisma.duo.findUnique({ where: { id: duoId } });
+  if (!duo || !duo.isActive) {
+    throw new DuoError("Duo niet gevonden of al ontbonden.", "duo_not_found", 404);
+  }
+  const membership = await prisma.duoMembership.findFirst({
+    where: { duoId, userId: actingUserId, leftAt: null },
+  });
+  if (!membership) {
+    throw new DuoError("Je bent geen lid van dit duo.", "not_a_member", 403);
+  }
+
+  const dbCategory = category;
+  await prisma.$transaction([
+    prisma.duo.update({ where: { id: duoId }, data: { category: dbCategory } }),
+    prisma.auditLog.create({
+      data: {
+        entityType: "duo",
+        entityId: duoId,
+        action: "duo_category_changed",
+        performedBy: actingUserId,
+        payload: { from: duo.category, to: dbCategory },
+      },
+    }),
+  ]);
+  return { id: duoId, category };
 }

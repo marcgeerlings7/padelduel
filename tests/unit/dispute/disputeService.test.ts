@@ -20,6 +20,13 @@ const mockGetConfigNumber = vi.fn();
 const mockFinalizeMatch = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+const mockNotify = vi.fn();
+vi.mock("@/server/services/notificationService", () => ({
+  notifySafely: async (_label: string, action: () => Promise<unknown>) => {
+    await action();
+  },
+  notifyDisputeResolved: mockNotify,
+}));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
 }));

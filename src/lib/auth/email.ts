@@ -18,7 +18,10 @@
 export type EmailMessage = {
   to: string;
   subject: string;
+  /** Platte-tekstversie (altijd aanwezig). */
   body: string;
+  /** Optionele HTML-versie (notificatiemails); de tekstversie blijft de fallback. */
+  html?: string;
 };
 
 export type EmailSendResult =
@@ -57,7 +60,13 @@ async function sendViaResend(message: EmailMessage, apiKey: string): Promise<Ema
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: [message.to], subject: message.subject, text: message.body }),
+      body: JSON.stringify({
+        from,
+        to: [message.to],
+        subject: message.subject,
+        text: message.body,
+        ...(message.html ? { html: message.html } : {}),
+      }),
       signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });
   } catch (err) {

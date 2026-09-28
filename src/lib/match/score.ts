@@ -30,7 +30,7 @@ export function parseScore(scoreRaw: string): SetScore[] {
  * Een set met 10+ punten aan één kant geldt als super-tiebreak: minstens
  * 10 punten en 2 verschil, en boven de 10 precies 2 verschil (12-10, niet 13-10).
  */
-function validateSet({ challengerGames, challengedGames }: SetScore): void {
+export function validateSet({ challengerGames, challengedGames }: SetScore): void {
   const label = `${challengerGames}-${challengedGames}`;
   const winner = Math.max(challengerGames, challengedGames);
   const loser = Math.min(challengerGames, challengedGames);

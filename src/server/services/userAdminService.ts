@@ -15,6 +15,8 @@ export type UserRoleValue = "USER" | "ADMIN";
 export type AdminUserSummary = {
   id: string;
   email: string;
+  /** KNLTB-aanvullingen: zelf ingestelde weergavenaam (null = niet ingesteld). */
+  displayName: string | null;
   role: UserRoleValue;
   isActive: boolean;
   createdAt: Date;
@@ -34,10 +36,18 @@ const ROLE_CHANGE_LOCK_NAME = "app_user_role_change";
 export async function listUsers(query?: string): Promise<AdminUserSummary[]> {
   const trimmed = query?.trim();
   const users = await prisma.user.findMany({
-    where: trimmed ? { email: { contains: trimmed, mode: "insensitive" } } : undefined,
+    where: trimmed
+      ? {
+          OR: [
+            { email: { contains: trimmed, mode: "insensitive" } },
+            { displayName: { contains: trimmed, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
     select: {
       id: true,
       email: true,
+      displayName: true,
       role: true,
       isActive: true,
       createdAt: true,

@@ -1,16 +1,17 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { applyMatchResult, applyForfeitPenalty } from "@/lib/elo";
+import { parseScore, determineWinner, SetScore, InvalidScoreError } from "@/lib/match/score";
 import {
-  parseScore,
-  validateSets,
-  determineWinner,
-  serializeScore,
-  SetScore,
-  InvalidScoreError,
-} from "@/lib/match/score";
+  resolveScoreSubmission,
+  type MatchSideName,
+  type ResolvedMatchResult,
+  type ScoreSubmission,
+} from "@/lib/match/resultType";
 import { getLadder } from "@/server/services/ladderService";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { lockChallengeRow } from "@/server/repositories/challengeLock";
+import { notifySafely, notifyScoreSubmitted } from "@/server/services/notificationService";
 
 export class MatchError extends Error {
   constructor(
@@ -29,20 +30,44 @@ async function isDuoMember(duoId: string, userId: string): Promise<boolean> {
   return membership !== null;
 }
 
-export async function submitScore(
-  challengeId: string,
-  actingUserId: string,
-  sets: SetScore[],
-  idempotencyKey: string,
-): Promise<{ id: string }> {
+/**
+ * Indiening zoals de service die accepteert (KNLTB-aanvullingen). Een kale
+ * `SetScore[]` blijft ondersteund en betekent "played". Bij een walkover
+ * wordt de niet-gekomen kant afgeleid: altijd het ANDERE duo dan dat van
+ * de indiener (het duo dat wél kwam dient de walkover in).
+ */
+export type SubmitScoreInput =
+  | SetScore[]
+  | { resultType: "played"; sets: SetScore[] }
+  | { resultType: "walkover" }
+  | { resultType: "retired"; sets: SetScore[]; retiredSide: MatchSideName };
+
+function toResolved(submission: ScoreSubmission): ResolvedMatchResult {
   try {
-    validateSets(sets);
+    return resolveScoreSubmission(submission);
   } catch (err) {
     if (err instanceof InvalidScoreError) {
       throw new MatchError(err.message, "invalid_score", 400);
     }
     throw err;
   }
+}
+
+const RESULT_TYPE_DB = { played: "PLAYED", walkover: "WALKOVER", retired: "RETIRED" } as const;
+const SIDE_DB = { challenger: "CHALLENGER", challenged: "CHALLENGED" } as const;
+
+export async function submitScore(
+  challengeId: string,
+  actingUserId: string,
+  input: SubmitScoreInput,
+  idempotencyKey: string,
+): Promise<{ id: string }> {
+  const normalized = Array.isArray(input) ? { resultType: "played" as const, sets: input } : input;
+
+  // Pure validatie van de (deel)score vóór elke DB-toegang; een walkover
+  // heeft geen sets en wordt pas na de lidmaatschapscheck opgebouwd.
+  let resolved: ResolvedMatchResult | null =
+    normalized.resultType === "walkover" ? null : toResolved(normalized);
 
   const challenge = await prisma.challenge.findUnique({ where: { id: challengeId } });
   if (!challenge) {
@@ -71,6 +96,18 @@ export async function submitScore(
     );
   }
 
+  if (normalized.resultType === "walkover") {
+    if (isChallenger && isChallenged) {
+      throw new MatchError(
+        "Je bent lid van beide duo's; een walkover kan dan niet eenduidig worden toegekend.",
+        "ambiguous_duo",
+        400,
+      );
+    }
+    resolved = toResolved({ resultType: "walkover", concedingSide: isChallenger ? "challenged" : "challenger" });
+  }
+  const result = resolved!;
+
   // Idempotentie (FR-5.5/US-F1): een herhaalde submit met dezelfde key
   // resulteert niet in een tweede Match.
   const existingByKey = await prisma.match.findUnique({ where: { idempotencyKey } });
@@ -87,8 +124,9 @@ export async function submitScore(
 
   const autoConfirmHours = await getConfigNumber("match_auto_confirm_hours");
 
+  let created: { id: string };
   try {
-    return await prisma.$transaction(async (tx) => {
+    created = await prisma.$transaction(async (tx) => {
       // Rij-lock op de challenge: serialiseert score-indiening met de
       // unplayed-timeout-job (die dezelfde lock neemt). Zo kan een challenge
       // nooit tegelijk een nieuwe match krijgen én op unplayed_timeout gaan.
@@ -123,7 +161,10 @@ export async function submitScore(
       const match = await tx.match.create({
         data: {
           challengeId,
-          scoreRaw: serializeScore(sets),
+          scoreRaw: result.scoreRaw,
+          resultType: RESULT_TYPE_DB[result.resultType],
+          concedingSide: result.concedingSide ? SIDE_DB[result.concedingSide] : null,
+          playedScoreRaw: result.playedScoreRaw,
           submittedBy: actingUserId,
           autoConfirmDeadline: new Date(Date.now() + autoConfirmHours * 60 * 60 * 1000),
           idempotencyKey,
@@ -148,17 +189,12 @@ export async function submitScore(
     }
     throw err;
   }
-}
 
-type TxClient = Prisma.TransactionClient;
-
-/**
- * `SELECT ... FOR UPDATE` op de challenge-rij. Gebruikt door zowel
- * submitScore als expireOneUnplayedChallenge, zodat die twee elkaar
- * uitsluiten (zie ELO_Algoritme.md §5: transactioneel en idempotent).
- */
-async function lockChallengeRow(tx: TxClient, challengeId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM "challenge" WHERE id = ${challengeId}::uuid FOR UPDATE`;
+  // Ná de commit (en alleen voor een nieuw aangemaakte match): de
+  // tegenpartij krijgt een bevestigingsverzoek. Een fout hier breekt de
+  // indiening nooit.
+  await notifySafely("score ingediend", () => notifyScoreSubmitted(created.id));
+  return created;
 }
 
 export async function respondToMatch(
@@ -374,6 +410,13 @@ async function expireOneUnplayedChallenge(challengeId: string): Promise<Unplayed
     if (guard.count === 0) {
       return null;
     }
+
+    // KNLTB-aanvullingen: een nog openstaand uitstelverzoek is door het
+    // verstrijken van de speeltermijn zinloos geworden.
+    await tx.challengePostponement.updateMany({
+      where: { challengeId, status: "PENDING" },
+      data: { status: "EXPIRED", respondedAt: new Date() },
+    });
 
     const challenge = await tx.challenge.findUniqueOrThrow({ where: { id: challengeId } });
     const penalty = await getConfigNumber("forfeit_rating_penalty");

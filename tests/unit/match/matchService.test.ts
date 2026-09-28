@@ -25,6 +25,7 @@ const mockPrisma = {
   },
   ratingHistory: { create: vi.fn() },
   auditLog: { create: vi.fn() },
+  challengePostponement: { updateMany: vi.fn(async () => ({ count: 0 })) },
   $queryRaw: vi.fn(async () => [{ id: "locked" }]),
   $transaction: vi.fn(async (arg: unknown) => {
     if (typeof arg === "function") {
@@ -39,6 +40,13 @@ const mockGetConfigNumber = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("@/server/services/ladderService", () => ({ getLadder: mockGetLadder }));
+const mockNotifyScoreSubmitted = vi.fn();
+vi.mock("@/server/services/notificationService", () => ({
+  notifySafely: async (_label: string, action: () => Promise<unknown>) => {
+    await action();
+  },
+  notifyScoreSubmitted: mockNotifyScoreSubmitted,
+}));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
 }));

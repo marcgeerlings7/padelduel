@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   let emailSent: boolean;
   try {
-    ({ emailSent } = await register(parsed.data.email, parsed.data.password));
+    ({ emailSent } = await register(parsed.data.email, parsed.data.password, parsed.data.displayName));
   } catch (err) {
     if (err instanceof AuthError) {
       return jsonError(err.message, err.httpStatus, err.code);
