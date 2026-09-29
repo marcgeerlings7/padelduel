@@ -412,3 +412,7 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 - Jobs: `/api/jobs/run-all` bevat nu `reminders`; nieuw `/api/jobs/send-reminders`.
 
 **Deploy-volgorde:** eerst `npx prisma migrate deploy` (nieuwe kolommen/tabellen/config), dan de code — de nieuwe code leest `default_start_rating`, `postponement_*` en `notification_*` via `getConfigNumber` (harde fout als de rij ontbreekt).
+
+### Productie-inrichting (2026-09-29)
+**Wat:** het Vercel-project had géén enkele environment-variabele meer (vermoedelijk verloren bij het opnieuw koppelen van de repo op 17-08). Nu gezet: `JWT_SECRET`, `JOBS_SECRET`, `CRON_SECRET` (= JOBS_SECRET) voor production + preview, `APP_BASE_URL` voor production, en `DATABASE_URL` via de Neon-integratie (Vercel Marketplace). Een lege productiedatabase krijgt via de migraties tabellen + `platform_config`, maar geen regio's of admin: daarvoor is er `scripts/bootstrap-production.ts` (idempotent; `--region "<naam>"`, `--admin <email>` voor een bestaand geactiveerd account). `scripts/seed.ts` nooit tegen productie.
+**Let op:** previews delen dezelfde Neon-database als productie (geen migraties vanuit previews, zie hierboven) — voor een pilot acceptabel; bij groei Neon-branches per preview gebruiken. E-mail (Resend) is bewust nog niet gekoppeld: activatielinks staan in de Vercel Function Logs.
