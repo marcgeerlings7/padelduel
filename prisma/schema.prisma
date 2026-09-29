@@ -70,6 +70,63 @@ enum DuoInvitationStatus {
   @@map("duo_invitation_status")
 }
 
+/// KNLTB-aanvullingen (akkoord PO 2026-09-28): speltype van een duo
+/// (heren-, dames- of gemengd dubbel). Staat op het DUO (niet op de
+/// user): het speltype is een eigenschap van de combinatie. Nullable —
+/// informatief, geen invloed op uitdaagregels (zie Technical_Debt.md).
+enum DuoCategory {
+  HEREN   @map("heren")
+  DAMES   @map("dames")
+  GEMENGD @map("gemengd")
+
+  @@map("duo_category")
+}
+
+/// KNLTB CRP art. 35.4 / 52.3: naast een gespeelde uitslag kan een match
+/// een walkover (niet komen opdagen / opgeven vóór aanvang) of een
+/// opgave tijdens de wedstrijd (retired) zijn. Beide lopen via de gewone
+/// ELO-verwerking (NIET is_forfeit, zie ELO_Algoritme.md §7).
+enum MatchResultType {
+  PLAYED   @map("played")
+  WALKOVER @map("walkover")
+  RETIRED  @map("retired")
+
+  @@map("match_result_type")
+}
+
+enum MatchSide {
+  CHALLENGER @map("challenger")
+  CHALLENGED @map("challenged")
+
+  @@map("match_side")
+}
+
+/// Uitstel in onderling overleg (KNLTB: geen eenzijdig uitstel).
+enum PostponementStatus {
+  PENDING   @map("pending")
+  ACCEPTED  @map("accepted")
+  DECLINED  @map("declined")
+  CANCELLED @map("cancelled")
+  EXPIRED   @map("expired")
+
+  @@map("postponement_status")
+}
+
+/// Soorten e-mailnotificaties; notification_log dedupliceert per
+/// (user, type, entiteit, occurrence_key).
+enum NotificationType {
+  CHALLENGE_RECEIVED          @map("challenge_received")
+  CHALLENGE_RESPONSE_REMINDER @map("challenge_response_reminder")
+  MATCH_DEADLINE_REMINDER     @map("match_deadline_reminder")
+  SCORE_SUBMITTED             @map("score_submitted")
+  AUTO_CONFIRM_REMINDER       @map("auto_confirm_reminder")
+  DISPUTE_RESOLVED            @map("dispute_resolved")
+  POSTPONEMENT_REQUESTED      @map("postponement_requested")
+  POSTPONEMENT_ANSWERED       @map("postponement_answered")
+
+  @@map("notification_type")
+}
+
 /// Centrale plek voor tunable business-parameters (PRD §14). Eén rij per
 /// key; de applicatielaag leest/cachet dit — nooit hardcoden op meerdere
 /// plekken (zie CLAUDE.md).
@@ -103,16 +160,26 @@ model User {
   isActive     Boolean   @default(false) @map("is_active")
   activatedAt  DateTime? @map("activated_at")
   createdAt    DateTime  @default(now()) @map("created_at")
+  // KNLTB-aanvullingen (akkoord PO 2026-09-28). displayName is nullable
+  // voor bestaande accounts (publiek getoond via een niet-PII-fallback,
+  // nooit het e-mailadres); knltbLevel = ZELF OPGEGEVEN speelsterkte 1-9
+  // (CHECK-constraint in de migratie). Bewust GEEN KNLTB-bondsnummer.
+  displayName  String?   @map("display_name") @db.VarChar(40)
+  knltbLevel   Int?      @map("knltb_level") @db.SmallInt
 
   memberships              DuoMembership[]
-  submittedMatches         Match[]         @relation("MatchSubmittedBy")
-  confirmedMatches         Match[]         @relation("MatchConfirmedBy")
-  raisedDisputes           Dispute[]       @relation("DisputeRaisedBy")
-  resolvedDisputes         Dispute[]       @relation("DisputeResolvedBy")
+  submittedMatches         Match[]                 @relation("MatchSubmittedBy")
+  confirmedMatches         Match[]                 @relation("MatchConfirmedBy")
+  raisedDisputes           Dispute[]               @relation("DisputeRaisedBy")
+  resolvedDisputes         Dispute[]               @relation("DisputeResolvedBy")
   auditLogEntries          AuditLog[]
-  sentDuoInvitations       DuoInvitation[] @relation("DuoInvitationProposedBy")
-  receivedDuoInvitations   DuoInvitation[] @relation("DuoInvitationInvitedUser")
-  requestedDuoDissolutions Duo[]           @relation("DuoDissolutionRequestedBy")
+  sentDuoInvitations       DuoInvitation[]         @relation("DuoInvitationProposedBy")
+  receivedDuoInvitations   DuoInvitation[]         @relation("DuoInvitationInvitedUser")
+  requestedDuoDissolutions Duo[]                   @relation("DuoDissolutionRequestedBy")
+  requestedPostponements   ChallengePostponement[] @relation("PostponementRequestedBy")
+  answeredPostponements    ChallengePostponement[] @relation("PostponementRespondedBy")
+  notificationPreference   NotificationPreference?
+  notificationLog          NotificationLog[]
 
   @@index([email], map: "idx_app_user_email")
   @@map("app_user")
@@ -124,30 +191,32 @@ model User {
 /// in de raw-SQL migratie) dat hetzelfde koppel twee keer tegelijk een
 /// actief duo vormt (FR-2.3).
 model Duo {
-  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                         String    @db.VarChar(100)
-  regionId                     String    @map("region_id") @db.Uuid
-  memberPairKey                String    @map("member_pair_key") @db.VarChar(150)
-  isActive                     Boolean   @default(true) @map("is_active")
-  currentRating                Int       @default(1200) @map("current_rating")
-  matchesPlayed                Int       @default(0) @map("matches_played")
-  dissolutionRequestedAt       DateTime? @map("dissolution_requested_at")
+  id                           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                         String       @db.VarChar(100)
+  regionId                     String       @map("region_id") @db.Uuid
+  memberPairKey                String       @map("member_pair_key") @db.VarChar(150)
+  isActive                     Boolean      @default(true) @map("is_active")
+  currentRating                Int          @default(1200) @map("current_rating")
+  matchesPlayed                Int          @default(0) @map("matches_played")
+  dissolutionRequestedAt       DateTime?    @map("dissolution_requested_at")
   // Fase 3-toevoeging: wie de ontbinding heeft aangevraagd, zodat de
   // ANDERE speler moet bevestigen (US-B3: "vereist bevestiging van beide
   // leden") — voorkomt dat dezelfde speler zijn eigen verzoek bevestigt.
-  dissolutionRequestedByUserId String?   @map("dissolution_requested_by_user_id") @db.Uuid
-  dissolvedAt                  DateTime? @map("dissolved_at")
-  createdAt                    DateTime  @default(now()) @map("created_at")
-  version                      Int       @default(0)
+  dissolutionRequestedByUserId String?      @map("dissolution_requested_by_user_id") @db.Uuid
+  dissolvedAt                  DateTime?    @map("dissolved_at")
+  createdAt                    DateTime     @default(now()) @map("created_at")
+  version                      Int          @default(0)
+  category                     DuoCategory?
 
-  region                 Region            @relation(fields: [regionId], references: [id])
+  region                 Region                  @relation(fields: [regionId], references: [id])
   memberships            DuoMembership[]
-  challengesAsChallenger Challenge[]       @relation("ChallengeChallenger")
-  challengesAsChallenged Challenge[]       @relation("ChallengeChallenged")
+  challengesAsChallenger Challenge[]             @relation("ChallengeChallenger")
+  challengesAsChallenged Challenge[]             @relation("ChallengeChallenged")
   ratingHistory          RatingHistory[]
   availability           DuoAvailability[]
   invitation             DuoInvitation?
-  dissolutionRequestedBy User?             @relation("DuoDissolutionRequestedBy", fields: [dissolutionRequestedByUserId], references: [id])
+  dissolutionRequestedBy User?                   @relation("DuoDissolutionRequestedBy", fields: [dissolutionRequestedByUserId], references: [id])
+  requestedPostponements ChallengePostponement[]
 
   // Rating-tier is bewust GEEN kolom: floor(current_rating / tier_size),
   // analoog aan de afgeleide ladderpositie (FR-3.3 / FR-4.2).
@@ -190,6 +259,7 @@ model DuoInvitation {
   resultingDuoId    String?             @unique @map("resulting_duo_id") @db.Uuid
   createdAt         DateTime            @default(now()) @map("created_at")
   respondedAt       DateTime?           @map("responded_at")
+  category          DuoCategory?
 
   region       Region @relation(fields: [regionId], references: [id])
   proposedBy   User   @relation("DuoInvitationProposedBy", fields: [proposedByUserId], references: [id])
@@ -217,13 +287,14 @@ model Challenge {
   acceptedAt       DateTime?       @map("accepted_at")
   matchDeadline    DateTime?       @map("match_deadline")
 
-  challengerDuo Duo             @relation("ChallengeChallenger", fields: [challengerDuoId], references: [id])
-  challengedDuo Duo             @relation("ChallengeChallenged", fields: [challengedDuoId], references: [id])
+  challengerDuo Duo                     @relation("ChallengeChallenger", fields: [challengerDuoId], references: [id])
+  challengedDuo Duo                     @relation("ChallengeChallenged", fields: [challengedDuoId], references: [id])
   // 1:n sinds post-v1 (replay na een voided match); hooguit één niet-voided
   // match per challenge (partial unique index, zie Match.challengeId).
   matches       Match[]
   dispute       Dispute?
   ratingHistory RatingHistory[]
+  postponements ChallengePostponement[]
 
   // FR-4.2: tier-restrictie wordt in de service-laag gevalideerd met de
   // ratings van beide duo's op aanmaakmoment, niet als DB-constraint.
@@ -234,22 +305,31 @@ model Challenge {
 }
 
 model Match {
-  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   // Niet meer @unique (post-v1, akkoord PO 2026-09-28): na een
   // resolved_overturned match-score-dispute (match -> voided) mag er een
   // nieuwe match voor dezelfde challenge komen. Hooguit één NIET-voided
   // match per challenge wordt afgedwongen door de partial unique index
   // idx_match_challenge_not_voided (raw SQL in migratie
   // 20260928120000_match_replay_after_void).
-  challengeId         String      @map("challenge_id") @db.Uuid
-  scoreRaw            String      @map("score_raw") @db.VarChar(50)
-  status              MatchStatus @default(AWAITING_CONFIRMATION)
-  submittedBy         String      @map("submitted_by") @db.Uuid
-  confirmedBy         String?     @map("confirmed_by") @db.Uuid
-  submittedAt         DateTime    @default(now()) @map("submitted_at")
-  confirmedAt         DateTime?   @map("confirmed_at")
-  autoConfirmDeadline DateTime    @map("auto_confirm_deadline")
-  idempotencyKey      String?     @unique @map("idempotency_key") @db.VarChar(100)
+  challengeId         String          @map("challenge_id") @db.Uuid
+  scoreRaw            String          @map("score_raw") @db.VarChar(50)
+  status              MatchStatus     @default(AWAITING_CONFIRMATION)
+  submittedBy         String          @map("submitted_by") @db.Uuid
+  confirmedBy         String?         @map("confirmed_by") @db.Uuid
+  submittedAt         DateTime        @default(now()) @map("submitted_at")
+  confirmedAt         DateTime?       @map("confirmed_at")
+  autoConfirmDeadline DateTime        @map("auto_confirm_deadline")
+  idempotencyKey      String?         @unique @map("idempotency_key") @db.VarChar(100)
+  // KNLTB-aanvullingen: bij WALKOVER/RETIRED is scoreRaw de VOLTOOIDE
+  // uitslag waarmee de ELO rekent (walkover: 6-0 6-0 voor het duo dat wel
+  // kwam; retired: gespeelde games + rest maximaal verloren door de
+  // opgevende kant). concedingSide = de kant die niet kwam / opgaf;
+  // playedScoreRaw = de werkelijk gespeelde (onvolledige) stand bij
+  // opgave. CHECK-constraints in de migratie.
+  resultType          MatchResultType @default(PLAYED) @map("result_type")
+  concedingSide       MatchSide?      @map("conceding_side")
+  playedScoreRaw      String?         @map("played_score_raw") @db.VarChar(50)
 
   challenge       Challenge       @relation(fields: [challengeId], references: [id])
   submittedByUser User            @relation("MatchSubmittedBy", fields: [submittedBy], references: [id])
@@ -361,4 +441,68 @@ model AuditLog {
 
   @@index([entityType, entityId], map: "idx_audit_log_entity")
   @@map("audit_log")
+}
+
+/// KNLTB-aanvullingen (akkoord PO 2026-09-28): verzoek om de speeltermijn
+/// in onderling overleg te verlengen. Hooguit één PENDING-verzoek per
+/// challenge (partial unique index in de migratie). previousMatchDeadline/
+/// newMatchDeadline worden pas bij acceptatie gezet (de deadline kan tussen
+/// verzoek en acceptatie nog wijzigen, bijv. door een overturned dispute).
+model ChallengePostponement {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  challengeId           String             @map("challenge_id") @db.Uuid
+  requestedByDuoId      String             @map("requested_by_duo_id") @db.Uuid
+  requestedByUserId     String             @map("requested_by_user_id") @db.Uuid
+  requestedDays         Int                @map("requested_days") @db.SmallInt
+  reason                String?            @db.VarChar(500)
+  status                PostponementStatus @default(PENDING)
+  respondedByUserId     String?            @map("responded_by_user_id") @db.Uuid
+  previousMatchDeadline DateTime?          @map("previous_match_deadline")
+  newMatchDeadline      DateTime?          @map("new_match_deadline")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  respondedAt           DateTime?          @map("responded_at")
+
+  challenge      Challenge @relation(fields: [challengeId], references: [id])
+  requestedByDuo Duo       @relation(fields: [requestedByDuoId], references: [id])
+  requestedBy    User      @relation("PostponementRequestedBy", fields: [requestedByUserId], references: [id])
+  respondedBy    User?     @relation("PostponementRespondedBy", fields: [respondedByUserId], references: [id])
+
+  @@index([challengeId, status], map: "idx_challenge_postponement_challenge_status")
+  @@map("challenge_postponement")
+}
+
+/// Per-user opt-out per notificatiesoort. Geen rij = alles aan (default).
+model NotificationPreference {
+  userId                    String   @id @map("user_id") @db.Uuid
+  challengeReceived         Boolean  @default(true) @map("challenge_received")
+  challengeResponseReminder Boolean  @default(true) @map("challenge_response_reminder")
+  matchDeadlineReminder     Boolean  @default(true) @map("match_deadline_reminder")
+  scoreConfirmation         Boolean  @default(true) @map("score_confirmation")
+  disputeResolved           Boolean  @default(true) @map("dispute_resolved")
+  postponement              Boolean  @default(true)
+  updatedAt                 DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notification_preference")
+}
+
+/// Idempotentie van e-mailnotificaties: een rij wordt VÓÓR verzending
+/// geclaimd (unique), zodat dezelfde melding nooit twee keer verstuurd
+/// wordt. occurrenceKey onderscheidt herhalingen voor dezelfde entiteit
+/// (bijv. de deadline waarvoor een herinnering gold — na een uitstel mag
+/// er een nieuwe herinnering komen); '' als dat niet van toepassing is.
+model NotificationLog {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  type          NotificationType
+  entityId      String           @map("entity_id") @db.Uuid
+  occurrenceKey String           @default("") @map("occurrence_key") @db.VarChar(64)
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, type, entityId, occurrenceKey], map: "idx_notification_log_unique")
+  @@index([entityId], map: "idx_notification_log_entity")
+  @@map("notification_log")
 }

@@ -1,255 +1,197 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getStoredToken } from "@/lib/client/session";
+import type { LucideIcon } from "lucide-react";
+import { CalendarClock, Gauge, Layers, Scale, TimerReset, Users } from "lucide-react";
+import { Page } from "@/components/app/Page";
+import { Button } from "@/components/ui/button";
+import { EloDemo } from "@/components/public/EloDemo";
+import { LiveLadderPreview } from "@/components/public/LiveLadderPreview";
+import { RedirectIfSignedIn } from "@/components/public/RedirectIfSignedIn";
+
+const STEPS: { title: string; body: string }[] = [
+  {
+    title: "Vorm een duo",
+    body: "Nodig je vaste partner uit, kies een regio en een duo-naam. Speel je met meerdere partners? Elk duo krijgt een eigen rating en plek.",
+  },
+  {
+    title: "Daag uit in je tier",
+    body: "Kies op de ladder een duo uit dezelfde regio en tier. Dat duo accepteert of weigert binnen de reactietermijn.",
+  },
+  {
+    title: "Speel en geef de uitslag door",
+    body: "Speel binnen de speeltermijn. Eén duo vult de sets in, het andere bevestigt de uitslag.",
+  },
+  {
+    title: "Zie je rating bewegen",
+    body: "Na bevestiging past de ELO-rating van beide duo's zich aan. Je positie en tier schuiven vanzelf mee.",
+  },
+];
+
+const RULES: { icon: LucideIcon; title: string; body: string }[] = [
+  {
+    icon: Layers,
+    title: "Tiers houden het spannend",
+    body: "De ladder is verdeeld in tiers van een vast aantal ratingpunten. Je daagt alleen duo's uit je eigen tier uit, dus elke wedstrijd is er een tegen je eigen niveau.",
+  },
+  {
+    icon: TimerReset,
+    title: "Geaccepteerd is afgesproken",
+    body: "Wie een uitdaging laat verlopen of een geaccepteerde wedstrijd niet speelt, krijgt een vaste puntenstraf. Die staat los van de ELO-rating en is in de historie apart gemarkeerd.",
+  },
+  {
+    icon: Scale,
+    title: "Geschillen met een uitweg",
+    body: "Klopt een uitslag niet, open dan een geschil. Een beheerder beslist. Wordt de score ongeldig verklaard, dan spelen jullie opnieuw met een nieuwe speeltermijn.",
+  },
+  {
+    icon: Gauge,
+    title: "Statistieken die iets zeggen",
+    body: "Per duo zie je winst en verlies, de huidige reeks, set- en gamesaldo en welk deel van de uitdagingen echt gespeeld is. Duo's die lang niets doen, krijgen het label inactief.",
+  },
+  {
+    icon: Users,
+    title: "Meerdere partners, gescheiden ratings",
+    body: "Speel met verschillende vaste partners in meerdere duo's tegelijk. Ratings en uitslagen van die duo's worden nooit gemengd.",
+  },
+  {
+    icon: CalendarClock,
+    title: "Beschikbaarheid delen",
+    body: "Geef aan wanneer jullie kunnen spelen, met vaste dagdelen of eigen tijden, eenmalig of elke week. Zo vind je na een uitdaging snel een moment.",
+  },
+];
 
 export default function Home() {
-  const router = useRouter();
-  const [checkedAuth, setCheckedAuth] = useState(false);
-
-  useEffect(() => {
-    if (getStoredToken()) {
-      router.replace("/dashboard");
-      return;
-    }
-    setCheckedAuth(true);
-  }, [router]);
-
-  // Voorkomt een flits van de marketingpagina vlak voordat de redirect
-  // naar /dashboard plaatsvindt voor een reeds ingelogde gebruiker.
-  if (!checkedAuth) return null;
-
   return (
-    <main>
-      {/* ---------------------------------------------------------- Hero */}
+    <Page width="wide" className="gap-12 sm:gap-16">
+      <RedirectIfSignedIn />
+
+      {/* Hero: het court-vlak van deze pagina, met de echte ladder erin. */}
       <section
-        style={{
-          position: "relative",
-          minHeight: "clamp(480px,80vh,760px)",
-          display: "flex",
-          alignItems: "flex-end",
-          backgroundImage:
-            "linear-gradient(180deg, rgba(20,20,20,0.35) 0%, rgba(20,20,20,0.55) 55%, rgba(20,20,20,0.92) 100%), url(/images/net-closeup.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          borderBottom: "2px solid var(--color-divider)",
-        }}
+        aria-labelledby="hero-title"
+        className="court-lines relative -mx-1 grid gap-8 overflow-hidden rounded-2xl bg-court px-5 pt-8 pb-5 text-court-foreground shadow-raised sm:mx-0 sm:px-8 sm:pt-12 sm:pb-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:px-12 lg:py-14"
       >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "clamp(32px,6vw,80px) clamp(20px,4vw,48px) clamp(48px,7vw,88px)",
-            color: "var(--color-bg)",
-          }}
-        >
-          <div className="tag tag-accent" style={{ marginBottom: 16 }}>
-            Seizoen 2026
-          </div>
+        <div className="flex flex-col gap-5">
           <h1
-            style={{
-              fontFamily: "var(--font-heading)",
-              fontWeight: 800,
-              fontSize: "clamp(40px,7vw,84px)",
-              lineHeight: 0.95,
-              textTransform: "uppercase",
-              margin: "0 0 20px",
-              maxWidth: "16ch",
-            }}
+            id="hero-title"
+            className="font-display text-[3.25rem] leading-[0.88] font-bold tracking-tight italic sm:text-7xl lg:text-[5.25rem]"
           >
-            Klim de ladder.
+            Speel je plek op de ladder.
           </h1>
-          <p style={{ fontSize: "clamp(16px,2vw,20px)", maxWidth: "44ch", margin: "0 0 32px", opacity: 0.92 }}>
-            Vereniging-onafhankelijke ranked ladder voor padel-duo&apos;s. Daag duo&apos;s uit binnen
-            jouw tier, speel de wedstrijd, en zie je ELO-rating stijgen — met meerdere vaste partners
-            tegelijk als je wilt.
+          <p className="max-w-[46ch] text-base text-court-muted sm:text-lg">
+            Een ranked ladder voor padel-duo&apos;s, los van je vereniging. Daag duo&apos;s van jouw niveau uit,
+            speel de wedstrijd en zie na elke bevestigde uitslag je rating bewegen.
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/register" className="btn btn-primary">
-              Account aanmaken
-            </Link>
-            <Link
-              href="/ladder"
-              className="btn btn-secondary"
-              style={{ background: "transparent", color: "var(--color-bg)", borderColor: "var(--color-bg)" }}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button asChild variant="ball" size="lg" className="no-underline">
+              <Link href="/register">Account aanmaken</Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="ghost"
+              className="border border-white/30 text-court-foreground no-underline hover:bg-white/10 hover:text-court-foreground"
             >
-              Bekijk de ladder
-            </Link>
+              <Link href="/login">Inloggen</Link>
+            </Button>
           </div>
         </div>
+        <LiveLadderPreview />
       </section>
 
-      {/* ---------------------------------------------------- Hoe het werkt */}
-      <section className="mx-auto" style={{ maxWidth: 1280, padding: "clamp(48px,7vw,88px) clamp(20px,4vw,48px)" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-heading)",
-            fontWeight: 800,
-            fontSize: "clamp(26px,3.5vw,36px)",
-            margin: "0 0 8px",
-          }}
-        >
-          Zo werkt het
-        </h2>
-        <p style={{ color: "var(--color-neutral-700)", fontSize: 15, margin: "0 0 32px", maxWidth: "60ch" }}>
-          Drie stappen tussen &ldquo;ingelogd&rdquo; en &ldquo;hoger op de ladder&rdquo;.
-        </p>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
-            gap: 2,
-            background: "var(--color-divider)",
-          }}
-        >
-          <div className="card" style={{ borderRadius: 0 }}>
-            <div className="card-kicker">Stap 1</div>
-            <div className="card-title">Vorm een duo, daag uit</div>
-            <div className="card-body">
-              Vind een vaste partner en kies een duo-naam. Vanaf de ladder daag je duo&apos;s in jouw
-              eigen tier uit.
-            </div>
-          </div>
-          <div className="card" style={{ borderRadius: 0 }}>
-            <div className="card-kicker">Stap 2</div>
-            <div className="card-title">Speel de wedstrijd</div>
-            <div className="card-body">
-              Wordt de uitdaging geaccepteerd? Speel binnen de termijn, voer de score in en laat het
-              andere duo bevestigen.
-            </div>
-          </div>
-          <div className="card" style={{ borderRadius: 0 }}>
-            <div className="card-kicker">Stap 3</div>
-            <div className="card-title">Klim de ladder</div>
-            <div className="card-body">
-              Je ELO-rating past zich automatisch aan. Win je vaker dan verwacht, dan stijg je
-              gestaag — en verschuift je tier mee.
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* --------------------------------------------------------- Quote band */}
-      <section
-        style={{
-          position: "relative",
-          padding: "clamp(64px,10vw,120px) clamp(20px,4vw,48px)",
-          backgroundImage:
-            "linear-gradient(180deg, rgba(10,20,15,0.75), rgba(10,20,15,0.75)), url(/images/ball-shadow.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center", color: "var(--color-bg)" }}>
-          <p
-            style={{
-              fontFamily: "var(--font-heading)",
-              fontWeight: 800,
-              fontSize: "clamp(22px,3.2vw,34px)",
-              lineHeight: 1.3,
-              margin: "0 0 24px",
-            }}
-          >
-            Van beginnersniveau tot regiokampioen — de ELO-rating zorgt dat je altijd tegen duo&apos;s
-            van jouw eigen niveau speelt.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <span className="tag tag-neutral">Multi-duo ondersteund</span>
-            <span className="tag tag-outline" style={{ borderColor: "var(--color-bg)", color: "var(--color-bg)" }}>
-              ELO-rating
-            </span>
-            <span className="tag tag-outline" style={{ borderColor: "var(--color-bg)", color: "var(--color-bg)" }}>
-              Nooit hardcoded regels
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* --------------------------------------------------------- Split content */}
-      <section
-        className="mx-auto grid gap-8 sm:grid-cols-2"
-        style={{ maxWidth: 1280, padding: "clamp(48px,7vw,88px) clamp(20px,4vw,48px)", alignItems: "center" }}
-      >
-        <div
-          style={{
-            aspectRatio: "4 / 5",
-            backgroundImage: "url(/images/warminup-closeup.jpg)",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        />
-        <div>
-          <div className="tag tag-accent" style={{ marginBottom: 10 }}>
-            Eerlijk & transparant
-          </div>
-          <h2
-            style={{
-              fontFamily: "var(--font-heading)",
-              fontWeight: 800,
-              fontSize: "clamp(24px,3.2vw,32px)",
-              margin: "0 0 16px",
-            }}
-          >
-            Elke regel is zichtbaar
+      {/* Stappen: een echte volgorde, dus genummerd. */}
+      <section aria-labelledby="stappen-title" className="flex flex-col gap-6">
+        <div className="flex max-w-2xl flex-col gap-2">
+          <h2 id="stappen-title" className="font-display text-[2rem] leading-none font-bold sm:text-[2.5rem]">
+            Van uitnodiging tot uitslag
           </h2>
-          <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--color-neutral-700)", margin: "0 0 16px" }}>
-            Geen verborgen ranking-logica. De tier-breedte, deadlines, forfeit-penalty&apos;s en de
-            precieze ELO-berekening staan allemaal uitgeschreven — met formules en voorbeelden — op de{" "}
-            <Link href="/info">uitlegpagina</Link>.
-          </p>
-          <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--color-neutral-700)", margin: 0 }}>
-            En je hoeft niet te kiezen tussen partners: speel met meerdere vaste duo&apos;s tegelijk,
-            elk met hun eigen plek op de ladder.
+          <p className="text-muted-foreground">
+            Vier stappen tussen je eerste login en een hogere plek op de ladder.
           </p>
         </div>
+        <ol className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-4">
+          {STEPS.map((step, index) => (
+            <li key={step.title} className="relative flex gap-4 pb-6 last:pb-0 sm:pb-8 lg:flex-col lg:gap-3 lg:pb-0">
+              {/* verbindingslijn (mobiel verticaal) */}
+              {index < STEPS.length - 1 ? (
+                <span aria-hidden className="absolute top-11 bottom-0 left-[1.1rem] w-px bg-border sm:hidden" />
+              ) : null}
+              <span
+                aria-hidden
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft font-score text-xl text-primary"
+              >
+                {index + 1}
+              </span>
+              <div className="flex flex-col gap-1 lg:border-t lg:pt-4">
+                <h3 className="font-display text-xl leading-tight font-bold">{step.title}</h3>
+                <p className="text-[0.9375rem] text-muted-foreground">{step.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </section>
 
-      {/* --------------------------------------------------------------- CTA */}
-      <section
-        style={{
-          position: "relative",
-          padding: "clamp(64px,10vw,120px) clamp(20px,4vw,48px)",
-          backgroundImage: "url(/images/court-lines.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          borderTop: "2px solid var(--color-divider)",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 640,
-            margin: "0 auto",
-            textAlign: "center",
-            background: "var(--color-bg)",
-            padding: "clamp(32px,5vw,56px)",
-          }}
-        >
-          <h2
-            style={{
-              fontFamily: "var(--font-heading)",
-              fontWeight: 800,
-              fontSize: "clamp(24px,3.2vw,32px)",
-              margin: "0 0 12px",
-            }}
-          >
-            Klaar om te klimmen?
+      {/* Rekenvoorbeeld met de echte ratingformule. */}
+      <section aria-labelledby="elo-title" className="flex flex-col gap-6">
+        <div className="flex max-w-2xl flex-col gap-2">
+          <h2 id="elo-title" className="font-display text-[2rem] leading-none font-bold sm:text-[2.5rem]">
+            Wat een uitslag waard is
           </h2>
-          <p style={{ fontSize: 15, color: "var(--color-neutral-700)", margin: "0 0 24px" }}>
-            Maak een account aan, vorm een duo, en klim vanaf je eerste wedstrijd mee op de ladder.
+          <p className="text-muted-foreground">
+            De rating is een ELO-rating: winnen van een sterker duo levert meer op dan winnen van een zwakker duo.
+            Daarnaast telt het gamesaldo mee: een 6-0 6-0 zegt meer dan een zege in de match-tiebreak. Probeer het.
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/register" className="btn btn-primary">
-              Account aanmaken
+        </div>
+        <EloDemo />
+      </section>
+
+      {/* Spelregels: geen reeks, dus geen nummers. */}
+      <section aria-labelledby="regels-title" className="flex flex-col gap-6">
+        <div className="flex max-w-2xl flex-col gap-2">
+          <h2 id="regels-title" className="font-display text-[2rem] leading-none font-bold sm:text-[2.5rem]">
+            Regels die iedereen scherp houden
+          </h2>
+          <p className="text-muted-foreground">
+            Alle termijnen en straffen staan centraal ingesteld en zijn na te lezen in de{" "}
+            <Link href="/info" className="font-semibold text-primary underline-offset-4 hover:underline">
+              uitleg
             </Link>
-            <Link href="/login" className="btn btn-ghost">
-              Ik heb al een account
-            </Link>
-          </div>
+            .
+          </p>
+        </div>
+        <ul className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+          {RULES.map(({ icon: Icon, title, body }) => (
+            <li key={title} className="flex gap-4 border-t py-5">
+              <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-primary" />
+              <div className="flex flex-col gap-1">
+                <h3 className="font-display text-lg leading-tight font-bold">{title}</h3>
+                <p className="text-sm text-muted-foreground">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* Slot-CTA */}
+      <section
+        aria-labelledby="cta-title"
+        className="flex flex-col items-start gap-5 rounded-2xl border bg-card p-6 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-8"
+      >
+        <div className="flex flex-col gap-1.5">
+          <h2 id="cta-title" className="font-display text-[1.75rem] leading-none font-bold sm:text-[2rem]">
+            Klaar voor je eerste uitdaging?
+          </h2>
+          <p className="text-muted-foreground">
+            Maak een account aan en nodig je partner uit. Zodra die accepteert, staan jullie op de ladder.
+          </p>
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button asChild size="lg" className="no-underline">
+            <Link href="/register">Account aanmaken</Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" className="no-underline">
+            <Link href="/info">Lees de spelregels</Link>
+          </Button>
         </div>
       </section>
-    </main>
+    </Page>
   );
 }

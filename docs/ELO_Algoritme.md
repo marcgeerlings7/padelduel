@@ -96,8 +96,14 @@ Een vaste K-factor voor alle duo's leidt tot te trage convergentie voor nieuwe d
 
 ## 4. Startrating voor nieuwe duo's
 
-- Elke nieuwe duo start op een vaste **basisrating (default: 1200)**.
-- Alternatief (optioneel, niet in v1): startrating baseren op gemiddelde van de individuele historie van beide spelers, indien zij eerder in een ander duo actief waren. **Voor v1: niet doen** — houdt het model simpel en voorspelbaar. Elke nieuwe duo-combinatie start gelijk.
+> **Gewijzigd (KNLTB-aanvullingen, akkoord PO 2026-09-28).** De v1-regel "iedereen start op 1200" is vervangen door onderstaande regel.
+
+- Per speler wordt een **spelerswaarde** bepaald: het gemiddelde van de huidige ratings van zijn/haar **andere actieve duo's**. Een speler zonder actieve duo's krijgt `platform_config.default_start_rating` (default 1200).
+- Het nieuwe duo start op het **gemiddelde van beide spelerswaarden**, afgerond op een geheel getal (`computeStartRating`, `src/lib/duo/startRating.ts`).
+- `matches_played` begint op 0: het duo is gewoon **provisional** (hoge K, §3), zodat een scheve start snel wordt gecorrigeerd.
+- Bewust **niet** meegenomen: ontbonden duo's (anders kun je een slechte rating "wegontbinden") en de zelf opgegeven KNLTB-speelsterkte (niet geverifieerd, dus manipuleerbaar).
+
+**Rating shoppen (PRD §11).** Onder de oude regel kon een sterke speler met een zwakke partner een nieuw duo op 1200 beginnen en "goedkoop" winnen in een lage tier. Met de nieuwe regel neemt een sterke speler zijn niveau mee. Omgekeerd kan een zwakke speler die met een sterke speler een duo vormt hoger starten dan zijn eigen niveau; dat duo verliest dan snel punten (provisional K). Resterende gaten: (1) een speler kan eerst zijn sterke duo's ontbinden en daarna een nieuw duo vormen (start dan op de default) — de ontbindings-cooldown en het admin-overzicht zijn hier de mitigatie; (2) het gemiddelde weegt niet naar aantal gespeelde matches. Zie `docs/Technical_Debt.md` ("KNLTB-aanvullingen — profiel, walkover, uitstel, notificaties").
 
 ## 5. Pseudocode (implementatie-referentie)
 
@@ -168,6 +174,8 @@ Concrete maatregelen, te implementeren als business-rules naast het kale rekenmo
 |---|---|
 | Eén duo trekt zich terug vóór bevestiging | Match krijgt status `voided`, geen rating-impact |
 | Forfeit (no-show) | Optioneel: winnaar krijgt vaste kleine bonus, geen volledige ELO-berekening (voorkomt dat no-shows als "makkelijke winst" gefarmd worden) — **open ontwerpvraag, zie PRD §14** |
+| Walkover (KNLTB CRP art. 35.4: tegenpartij komt niet opdagen / geeft op vóór aanvang) | *KNLTB-aanvulling.* Het duo dat wél kwam dient de uitslag in (`result_type = walkover`), de tegenpartij bevestigt of betwist via de gewone flow. Vastgelegd als **6-0 6-0** voor het niet-opgevende duo en verwerkt via de **gewone ELO-formule** (incl. gamesaldo, dus maximale multiplier). Dit is uitdrukkelijk **geen** `is_forfeit`-penalty — die blijft voorbehouden aan `expired`/`unplayed_timeout` (§8bis). |
+| Opgave tijdens de wedstrijd (KNLTB CRP art. 52.3) | *KNLTB-aanvulling.* `result_type = retired` + de opgevende kant. De gespeelde games blijven staan; de lopende set wordt uitgespeeld in het voordeel van de niet-opgevende kant met de kleinst mogelijke geldige eindstand (6-x bij x ≤ 4, 7-5 bij 5, 7-6 bij 6) en resterende sets tellen als 6-0. Die voltooide uitslag (`score_raw`) gaat door de gewone ELO-verwerking; de werkelijk gespeelde stand staat in `played_score_raw`. |
 | Dispute wordt na resolutie alsnog bevestigd | Rating wordt op dat moment pas verwerkt, met tijdstempel van resolutie, niet van wedstrijddatum |
 | Duo wordt ontbonden na een match, vóór ratingverwerking | Match wordt alsnog verwerkt; rating-historie blijft gekoppeld aan de (nu inactieve) duo voor auditdoeleinden |
 

@@ -3,10 +3,36 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { CircleCheck, CircleX, Loader2 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 type Status = "activating" | "success" | "error";
+
+const TITLES: Record<Status, string> = {
+  activating: "Account activeren…",
+  success: "Account geactiveerd",
+  error: "Activeren mislukt",
+};
+
+function StatusIcon({ status }: { status: Status }) {
+  const Icon = status === "success" ? CircleCheck : status === "error" ? CircleX : Loader2;
+  return (
+    <span
+      className={cn(
+        "flex size-14 items-center justify-center rounded-2xl",
+        status === "success" && "bg-win-soft text-win",
+        status === "error" && "bg-loss-soft text-loss",
+        status === "activating" && "bg-primary-soft text-primary",
+      )}
+    >
+      <Icon aria-hidden className={cn("size-7", status === "activating" && "animate-spin")} />
+    </span>
+  );
+}
 
 function ActivateContent() {
   const searchParams = useSearchParams();
@@ -35,37 +61,55 @@ function ActivateContent() {
   }, [token]);
 
   return (
+    <ActivateView status={status}>
+      {message ? (
+        <p className="text-muted-foreground">{message}</p>
+      ) : (
+        <p className="text-muted-foreground">Even geduld, we controleren je activatielink.</p>
+      )}
+      {status === "success" ? (
+        <Button asChild size="lg" className="w-full no-underline">
+          <Link href="/login">Naar inloggen</Link>
+        </Button>
+      ) : null}
+      {status === "error" ? (
+        <div className="flex flex-col gap-2">
+          <Button asChild size="lg" variant="outline" className="w-full no-underline">
+            <Link href="/register">Nieuw account aanmaken</Link>
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            Heb je je account al geactiveerd?{" "}
+            <Link href="/login" className="font-semibold text-primary underline-offset-4 hover:underline">
+              Inloggen
+            </Link>
+          </p>
+        </div>
+      ) : null}
+    </ActivateView>
+  );
+}
+
+function ActivateView({ status, children }: { status: Status; children?: React.ReactNode }) {
+  return (
     <AuthLayout>
-      <div className={`tag ${status === "error" ? "tag-accent" : "tag-neutral"}`} style={{ marginBottom: 10 }}>
-        Account activeren
+      <div className="flex flex-col gap-4" aria-live="polite">
+        <StatusIcon status={status} />
+        <h1 className="font-display text-[2.5rem] leading-[0.95] font-bold tracking-tight">{TITLES[status]}</h1>
+        {children}
       </div>
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 12px" }}>
-        {status === "activating" && "Bezig met activeren..."}
-        {status === "success" && "Account geactiveerd"}
-        {status === "error" && "Activeren mislukt"}
-      </h1>
-      {message && (
-        <p style={{ margin: "0 0 24px", color: "var(--color-neutral-700)", fontSize: 14, lineHeight: 1.6 }}>
-          {message}
-        </p>
-      )}
-      {status === "success" && (
-        <Link href="/login" className="btn btn-primary btn-block">
-          Naar inloggen
-        </Link>
-      )}
-      {status === "error" && (
-        <Link href="/register" className="btn btn-secondary btn-block">
-          Nieuw account aanmaken
-        </Link>
-      )}
     </AuthLayout>
   );
 }
 
 export default function ActivatePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <ActivateView status="activating">
+          <Skeleton className="h-4 w-3/4" />
+        </ActivateView>
+      }
+    >
       <ActivateContent />
     </Suspense>
   );

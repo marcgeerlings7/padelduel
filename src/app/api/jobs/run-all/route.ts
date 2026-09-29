@@ -3,9 +3,10 @@ import { jsonError } from "@/lib/http";
 import { isAuthorizedJobRequest } from "@/lib/auth/jobAuth";
 import { expireOverdueChallenges } from "@/server/services/challengeService";
 import { autoConfirmOverdueMatches, expireUnplayedChallenges } from "@/server/services/matchService";
+import { sendDueReminders, type ReminderRunResult } from "@/server/services/notificationService";
 
 /**
- * Combineert alle drie de achtergrondjobs (US-E4/US-F3/US-F5) in één
+ * Combineert alle achtergrondjobs (US-E4/US-F3/US-F5 + e-mailherinneringen) in één
  * aanroep, zodat één enkele Vercel Cron-trigger (zie vercel.json)
  * volstaat — het Hobby-plan staat maximaal 2 cron jobs toe. De losse
  * endpoints (/api/jobs/expire-challenges e.a.) blijven bestaan voor
@@ -18,10 +19,23 @@ async function run() {
     expireUnplayedChallenges(),
   ]);
 
+  // Herinneringen pas NA de verloop-/bevestigingsjobs, zodat er niet
+  // herinnerd wordt aan iets dat in dezelfde run al verlopen/verwerkt is.
+  // Een fout hier laat de rest van de run (al gecommit) ongemoeid.
+  let reminders: ReminderRunResult | { error: string };
+  try {
+    reminders = await sendDueReminders();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[jobs] herinneringen versturen mislukt:", err instanceof Error ? err.message : err);
+    reminders = { error: "reminders_failed" };
+  }
+
   return NextResponse.json({
     expiredChallenges: expiredChallenges.filter(Boolean).length,
     autoConfirmedMatches: autoConfirmed.filter((r) => !r.alreadyProcessed).length,
     expiredUnplayedChallenges: expiredUnplayed.filter(Boolean).length,
+    reminders,
   });
 }
 

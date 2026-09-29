@@ -49,11 +49,14 @@ describe("listUsers", () => {
     expect(args.where).toBeUndefined();
   });
 
-  it("filtert case-insensitive op e-mailadres als er een zoekterm is", async () => {
+  it("filtert case-insensitive op e-mailadres of weergavenaam als er een zoekterm is", async () => {
     mockPrisma.user.findMany.mockResolvedValueOnce([]);
     await listUsers("  User2 ");
     expect(mockPrisma.user.findMany.mock.calls[0][0].where).toEqual({
-      email: { contains: "User2", mode: "insensitive" },
+      OR: [
+        { email: { contains: "User2", mode: "insensitive" } },
+        { displayName: { contains: "User2", mode: "insensitive" } },
+      ],
     });
   });
 });

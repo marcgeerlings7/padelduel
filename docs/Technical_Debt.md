@@ -336,3 +336,78 @@ INSERT INTO "platform_config" (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 ```
 
+
+> **Status van deze rijen:** opgenomen in de data-only vervolgmigratie `20260928160000_elo_margin_inactive_config` (een al toegepaste migratie wordt nooit achteraf gewijzigd).
+
+---
+
+## KNLTB-aanvullingen (akkoord PO 2026-09-28) — profiel, walkover, uitstel, notificaties
+
+Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notifications` (Prisma-deel + met de hand gecontroleerde raw SQL voor CHECK-constraints en partial indexen + `platform_config`-rijen). `docs/Database_Schema.sql` en `docs/ER_Diagram.mermaid` zijn bijgewerkt. Alleen schema/services/API/jobs/e-mailtemplates/tests/docs — geen pagina-UI (dat doet de redesign).
+
+**Nieuwe `platform_config`-keys:** `default_start_rating` (1200), `postponement_max_days` (7), `postponement_max_per_challenge` (1), `notification_response_deadline_lead_hours` (24), `notification_match_deadline_lead_hours` (48), `notification_auto_confirm_lead_hours` (12).
+
+### 1. Spelersprofiel
+**Wat:** `app_user.display_name` (VARCHAR(40), nullable) en `app_user.knltb_level` (SMALLINT 1–9, nullable, CHECK). `GET/PATCH /api/me/profile` (`src/server/services/profileService.ts`, validatie in `src/lib/profile/validation.ts`). Registratie accepteert `displayName`.
+**Keuzes:**
+- **Weergavenaam** 2–40 tekens (letters incl. accenten, cijfers, spatie, `. ' - _`; geen `@`, zodat er nooit een e-mailadres als publieke naam komt). Niet uniek: de publieke identiteit op de ladder is de duo-naam.
+- **In de API tijdelijk optioneel bij registratie**: de huidige registratiepagina stuurt het veld nog niet mee (en pagina-UI valt buiten deze opdracht). Wordt het meegestuurd, dan geldt de volledige validatie. De nieuwe registratiepagina hoort het verplicht te maken; daarna is `displayName: displayNameSchema.optional()` in `registerSchema` één regel om verplicht te maken. `GET /api/me/profile` geeft `hasDisplayName: false`, zodat de UI bestaande spelers om een naam kan vragen.
+- **Fallback** voor spelers zonder naam: `Speler XXXXXX` (eerste 6 hex-tekens van het willekeurige user-id, `publicDisplayName`), nooit het e-mailadres.
+- **Speelsterkte** is expliciet *zelf opgegeven* (`knltbLevelIsSelfDeclared: true` in de API), wordt niet geverifieerd en heeft geen invloed op rating of uitdaagregels. **Geen** KNLTB-bondsnummer opgeslagen (schema weigert onbekende velden).
+- **Categorie op het duo** (`duo.category`: `HEREN`/`DAMES`/`GEMENGD`, nullable), niet op de speler: het KNLTB-speltype hoort bij de combinatie. Optioneel bij `POST /api/duos/propose` (opgeslagen op `duo_invitation.category` en bij acceptatie overgenomen); wijzigen via `PATCH /api/duos/[id]/category` (elk actief lid, audit-log `duo_category_changed`). **Informatief**: geen invloed op uitdaagregels of ladder (een aparte ladder per speltype zou de pilot-ladder versnipperen). Niet opgenomen in de ladder-/dashboard-responses (die worden parallel uitgebreid) — wel in `/api/duos/mine` en `/api/duos/[id]/challenges`.
+- Niets hiervan gaat via de externe availability-API (die selecteert expliciet alleen duo-naam, regio en tijdsblokken — ongewijzigd).
+
+**Audit e-mailadressen zichtbaar voor andere gebruikers:**
+| Plek | Bevinding | Actie |
+|---|---|---|
+| `GET /api/duos/invitations` | Bevatte alleen user-id's; de uitgenodigde kon niet zien wie uitnodigde | `proposedByName`/`invitedUserName` (publieke naam) toegevoegd, nooit e-mail |
+| `GET /api/duos/[id]/challenges` | Volledige duo-rijen van de tegenstander, incl. `memberPairKey` (= user-id's van de leden) en `dissolutionRequestedByUserId` | Beperkt tot `id, name, regionId, currentRating, isActive, category` |
+| `GET /api/dashboard` (`partnerEmail`) | E-mailadres van de eigen duo-partner | **Niet gewijzigd** (dashboardService-shape wordt parallel uitgebreid); advies: `partnerDisplayName` toevoegen en `partnerEmail` laten vervallen bij de merge/redesign |
+| `POST /api/duos/propose` | Uitnodigen gaat via het e-mailadres; foutmelding "Gebruiker met dit e-mailadres niet gevonden" verraadt of een adres geregistreerd is (enumeratie) | Ongewijzigd (UX-keuze); restrisico, zie hieronder |
+| `GET /api/admin/disputes`, `GET /api/admin/users` | E-mail zichtbaar, maar alleen voor admins | E-mail blijft (contact), `displayName` toegevoegd; admin-zoeken zoekt ook op naam |
+| Ladder, rating-historie, externe API, notificatiemails | Geen e-mailadressen | — |
+
+### 2. Startrating nieuw duo
+**Wat:** zie `ELO_Algoritme.md` §4 (bijgewerkt): gemiddelde van beide spelers, per speler het gemiddelde van zijn/haar andere **actieve** duo's of `default_start_rating`. Pure functie `computeStartRating` (`src/lib/duo/startRating.ts`), aangeroepen in `respondToInvitation` binnen de transactie die het duo aanmaakt. Provisional K blijft (matches_played = 0).
+**Niet gedaan:** bijsturen op zelf opgegeven speelsterkte (manipuleerbaar, niet geverifieerd) — kan later via een config-mapping.
+**Restrisico ("rating shoppen", PRD §11):** een speler kan eerst zijn duo's ontbinden en dan een nieuw duo vormen dat op de default start; mitigatie is de ontbindings-cooldown + admin-monitoring. Het gemiddelde weegt niet naar aantal gespeelde matches (een net gevormd, nog provisional duo telt even zwaar als een gevestigd duo). Bestaande duo's worden niet herberekend.
+
+### 3. Walkover en opgave (KNLTB CRP art. 35.4 / 52.3)
+**Wat:** `match.result_type` (`played`/`walkover`/`retired`), `match.conceding_side`, `match.played_score_raw` + CHECK dat de velden consistent zijn. Logica puur in `src/lib/match/resultType.ts`; `POST /api/challenges/[id]/score` accepteert `resultType` (default `played`, dus bestaande clients blijven werken).
+**Keuzes:**
+- **Walkover:** alleen door het duo dat wél kwam in te dienen; de niet-gekomen kant wordt afgeleid (= het andere duo). Vastgelegd als 6-0 6-0 en via de **gewone ELO-verwerking** (incl. gamesaldo → maximale multiplier; geaccepteerd). **Geen** `is_forfeit` — dat blijft voor `expired`/`unplayed_timeout`. Iemand die lid is van beide duo's kan geen walkover indienen (`ambiguous_duo`).
+- **Opgave:** door beide duo's in te dienen, met `retiredSide`. Validatie: 1–3 sets; alle sets behalve de laatste moeten geldige eindstanden zijn; de laatste mag onafgemaakt zijn (0–6 per kant, nog niet beslist, incl. 5-5/6-5/6-6); een al beslist resultaat of een set ná de beslissing wordt geweigerd ("dien een gewone uitslag in"); de opgevende kant mag niet al gewonnen hebben. Aanvulling: lopende set naar 6-x / 7-5 / 7-6 voor de niet-opgevende kant, resterende sets 6-0. De voltooide uitslag wordt nog eens tegen `validateSets` gecontroleerd.
+- Bevestigen/betwisten, auto-confirm, disputes en idempotentie zijn ongewijzigd (zelfde `submitScore`-transactie met rij-lock).
+**Restrisico's:** een opgave tijdens een (super-)tiebreak wordt als games van de lopende set ingevoerd (bijv. 6-6 → 7-6); de tiebreakpunten zelf worden niet vastgelegd, en een match-tiebreak als 3e set wordt bij opgave als gewone set 6-x aangevuld. Walkover-"farming" (afspreken dat de ander niet komt) levert maximale ELO-winst op; de bestaande anti-manipulatiemaatregelen (herhaalde-tegenstander-demping, disputes, admin-review) gelden onverkort.
+
+### 4. Uitstel in onderling overleg
+**Wat:** tabel `challenge_postponement` (partial unique index: hooguit één `pending` per challenge; CHECK op de deadlines bij `accepted`). Service `src/server/services/postponementService.ts`, endpoints `GET/POST /api/challenges/[id]/postponement` en `POST /api/challenges/[id]/postponement/[postponementId]` (`accept`/`decline` door het andere duo, `cancel` door het vragende duo).
+**Regels/keuzes:** alleen voor een `accepted` challenge vóór de speeltermijn en zolang er geen (niet-voided) score is; 1 ≤ dagen ≤ `postponement_max_days`; alleen **geaccepteerde** verzoeken tellen voor `postponement_max_per_challenge`; nieuwe deadline = deadline **op het moment van accepteren** + dagen (de deadline kan tussen verzoek en acceptatie nog wijzigen door een overturned dispute). De aanvrager kan nooit zelf accepteren, ook niet als lid van beide duo's. Aanvragen en accepteren nemen dezelfde rij-lock als `submitScore` en de unplayed-timeout-job (gedeelde helper `src/server/repositories/challengeLock.ts`) en controleren daarna alles opnieuw; statusovergangen zijn compare-and-swaps. De unplayed-timeout-job zet een nog openstaand verzoek in dezelfde transactie op `expired`. Alle acties → `audit_log` (`postponement_requested/accepted/declined/cancelled`).
+**Restrisico:** een verzoek kan tot vlak voor de deadline worden ingediend; reageert het andere duo niet op tijd, dan volgt gewoon de forfeit (bewust: geen eenzijdig uitstel). Na een overturned dispute herstart de termijn, maar het aantal gebruikte uitstellen blijft staan.
+
+### 5. E-mailnotificaties met afmeldvoorkeuren
+**Wat:** `notification_preference` (per-user toggles, geen rij = alles aan) en `notification_log` (unique op user + soort + entiteit + `occurrence_key`). Service `src/server/services/notificationService.ts`, templates `src/lib/notifications/templates.ts` (tekst + eenvoudige HTML, Nederlands, link via `APP_BASE_URL`, afmeldhint naar `/profile`), voorkeuren `GET/PATCH /api/me/notification-preferences`. `sendEmail` accepteert nu een optionele `html` (Resend krijgt `text` + `html`).
+**Soorten:** nieuwe uitdaging (uitgedaagd duo), herinnering reactietermijn (uitgedaagd duo), herinnering speeltermijn (beide duo's, alleen zonder score), score wacht op bevestiging + herinnering vóór auto-confirm (het duo dat moet bevestigen; één toggle `scoreConfirmation`), geschil afgehandeld (beide duo's), uitstel gevraagd (ander duo) / beantwoord (vragend duo; niet bij intrekken).
+**Keuzes:**
+- **Event-mails ná de commit** via `notifySafely`: fouten (DB of provider) worden gelogd en breken de hoofdactie nooit. Een idempotente herhaling van een score-indiening stuurt geen tweede mail.
+- **Herinneringen** in de uurlijkse `/api/jobs/run-all` (ná de verloop-/bevestigingsjobs, en een fout daarin laat de rest van de run ongemoeid) en los via `/api/jobs/send-reminders`. Alleen deadlines in de toekomst binnen de lead-tijd. De deadline zit in de `occurrence_key`, zodat na een uitstel/overturned dispute wél een nieuwe herinnering volgt.
+- **Nooit dubbel:** vóór verzending wordt de log-rij geclaimd (`createMany … skipDuplicates`); bij een mislukte verzending wordt de claim vrijgegeven, zodat de volgende jobrun het opnieuw probeert.
+- Elke ontvanger krijgt een eigen mail; alleen actieve leden (`left_at IS NULL`) met een geactiveerd account; mails bevatten alleen duo-namen en de naam van de ontvanger, nooit e-mailadressen van anderen. Duo-namen en redenen worden in de HTML ge-escaped.
+**Restrisico's:**
+- Serverless: event-mails worden binnen het request afgewacht (niet fire-and-forget, dat kan op Vercel na het antwoord worden afgebroken); dat maakt de actie iets trager bij een trage provider (Resend-timeout 10 s per mail).
+- Crasht het proces tussen claim en verzending, dan wordt die ene mail nooit verstuurd (bewust: liever één gemiste dan dubbele mail). Een permanent mislukkende herinnering wordt elk uur opnieuw geprobeerd tot de deadline verstreken is.
+- Geen retry/queue voor event-mails; geen afmeldlink met token (afmelden vereist inloggen op `/profile`, dat de UI-redesign bouwt). `notification_log` groeit zonder opschoning.
+- Met de default-afzender van Resend komen mails alleen aan op het eigen account-adres (zie "Post-v1 §2").
+
+### API-overzicht (voor de UI)
+- `GET /api/me/profile` → `MyProfile`; `PATCH /api/me/profile` `{ displayName?, knltbLevel?: 1–9 | null }` → `MyProfile`.
+- `GET/PATCH /api/me/notification-preferences` → `{ preferences, labels }`; PATCH met een deel van de zes booleans.
+- `POST /api/auth/register` `{ email, password, displayName? }`.
+- `POST /api/duos/propose` `{ …, category?: "HEREN" | "DAMES" | "GEMENGD" }`; `PATCH /api/duos/[id]/category` `{ category: … | null }`.
+- `GET /api/duos/invitations`: elke uitnodiging + `proposedByName`, `invitedUserName`, `region`.
+- `POST /api/challenges/[id]/score`: `{ resultType?: "played", sets, idempotencyKey }` | `{ resultType: "walkover", idempotencyKey }` | `{ resultType: "retired", sets, retiredSide, idempotencyKey }`.
+- `GET /api/duos/[id]/challenges`: matches met `resultType`, `concedingSide`, `playedScoreRaw`; per challenge `postponements`.
+- `GET/POST /api/challenges/[id]/postponement`, `POST /api/challenges/[id]/postponement/[postponementId]` `{ action }`.
+- Jobs: `/api/jobs/run-all` bevat nu `reminders`; nieuw `/api/jobs/send-reminders`.
+
+**Deploy-volgorde:** eerst `npx prisma migrate deploy` (nieuwe kolommen/tabellen/config), dan de code — de nieuwe code leest `default_start_rating`, `postponement_*` en `notification_*` via `getConfigNumber` (harde fout als de rij ontbreekt).

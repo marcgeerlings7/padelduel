@@ -8,6 +8,7 @@ import { getStoredToken } from "@/lib/client/session";
 export type AdminUser = {
   id: string;
   email: string;
+  displayName: string | null;
   role: "USER" | "ADMIN";
   isActive: boolean;
   createdAt: string;

@@ -6,6 +6,7 @@ const mockPrisma = {
   duo: {
     findFirst: vi.fn(),
     findUnique: vi.fn(),
+    findMany: vi.fn(async () => [] as Array<{ currentRating: number }>),
     create: vi.fn(),
     update: vi.fn(),
   },
@@ -48,6 +49,7 @@ beforeEach(() => {
   mockGetConfigNumber.mockImplementation(async (key: string) => {
     if (key === "max_active_duos_per_user") return MAX_ACTIVE_DUOS;
     if (key === "duo_dissolution_cooldown_days") return COOLDOWN_DAYS;
+    if (key === "default_start_rating") return 1200;
     throw new Error(`onverwachte config-key in test: ${key}`);
   });
   // Standaard: geen bestaande duo/invitation-conflicten, ruim onder het max.

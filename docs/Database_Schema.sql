@@ -17,6 +17,17 @@ CREATE TYPE challenge_status AS ENUM (
 CREATE TYPE match_status AS ENUM ('awaiting_confirmation', 'completed', 'disputed', 'voided');
 CREATE TYPE dispute_status AS ENUM ('open', 'resolved_upheld', 'resolved_overturned');
 CREATE TYPE dispute_subject AS ENUM ('match_score', 'forfeit'); -- forfeit = unplayed_timeout of no-response
+-- KNLTB-aanvullingen (akkoord PO 2026-09-28), migratie
+-- 20260928150000_knltb_profile_walkover_postponement_notifications:
+CREATE TYPE duo_category AS ENUM ('heren', 'dames', 'gemengd');          -- speltype (informatief)
+CREATE TYPE match_result_type AS ENUM ('played', 'walkover', 'retired'); -- KNLTB CRP art. 35.4 / 52.3
+CREATE TYPE match_side AS ENUM ('challenger', 'challenged');
+CREATE TYPE postponement_status AS ENUM ('pending', 'accepted', 'declined', 'cancelled', 'expired');
+CREATE TYPE notification_type AS ENUM (
+    'challenge_received', 'challenge_response_reminder', 'match_deadline_reminder',
+    'score_submitted', 'auto_confirm_reminder', 'dispute_resolved',
+    'postponement_requested', 'postponement_answered'
+);
 
 -- ---------------------------------------------------------
 -- PLATFORM CONFIG
@@ -39,6 +50,15 @@ INSERT INTO platform_config (key, value, description) VALUES
     ('forfeit_rating_penalty', '10', 'Vaste rating-penalty (punten) bij expired of unplayed_timeout'),
     ('forfeit_cooldown_days', '3', 'Cooldown in dagen na een opgelegde forfeit-penalty'),
     ('duo_dissolution_cooldown_days', '7', 'Cooldown in dagen na duo-ontbinding voordat leden opnieuw kunnen combineren');
+-- (Latere migraties voegen o.a. login-, match-, dispute- en API-parameters toe.)
+-- KNLTB-aanvullingen:
+INSERT INTO platform_config (key, value, description) VALUES
+    ('default_start_rating', '1200', 'Startrating voor een speler zonder andere actieve duo''s (nieuw duo = gemiddelde van beide spelers)'),
+    ('postponement_max_days', '7', 'Maximum aantal dagen uitstel per verzoek (in onderling overleg)'),
+    ('postponement_max_per_challenge', '1', 'Maximum aantal geaccepteerde uitstelverzoeken per challenge'),
+    ('notification_response_deadline_lead_hours', '24', 'Herinnering reactietermijn: uren vooraf'),
+    ('notification_match_deadline_lead_hours', '48', 'Herinnering speeltermijn: uren vooraf'),
+    ('notification_auto_confirm_lead_hours', '12', 'Herinnering automatische scorebevestiging: uren vooraf');
 
 -- ---------------------------------------------------------
 -- REGION
@@ -60,7 +80,14 @@ CREATE TABLE app_user (
     role            user_role NOT NULL DEFAULT 'user',
     is_active       BOOLEAN NOT NULL DEFAULT false,
     activated_at    TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- KNLTB-aanvullingen: publieke weergavenaam (NULL = nog niet ingesteld;
+    -- de app toont dan een neutrale fallback, NOOIT het e-mailadres) en
+    -- zelf opgegeven KNLTB-speelsterkte. Bewust GEEN KNLTB-bondsnummer.
+    display_name    VARCHAR(40),
+    knltb_level     SMALLINT,
+    CONSTRAINT chk_app_user_knltb_level CHECK (knltb_level IS NULL OR knltb_level BETWEEN 1 AND 9),
+    CONSTRAINT chk_app_user_display_name_not_blank CHECK (display_name IS NULL OR length(btrim(display_name)) >= 2)
 );
 
 CREATE INDEX idx_app_user_email ON app_user (email);
@@ -83,7 +110,12 @@ CREATE TABLE duo (
     dissolution_requested_at    TIMESTAMPTZ,
     dissolved_at                TIMESTAMPTZ,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    version                     INTEGER NOT NULL DEFAULT 0
+    version                     INTEGER NOT NULL DEFAULT 0,
+    -- KNLTB-aanvullingen: speltype, informatief (geen invloed op uitdaagregels).
+    -- Ook op duo_invitation.category (wordt bij acceptatie overgenomen).
+    -- current_rating wordt bij aanmaak door de service gezet op het gemiddelde
+    -- van beide spelers (ELO_Algoritme.md §4); de DEFAULT is alleen een vangnet.
+    category                    duo_category
 );
 
 CREATE INDEX idx_duo_region_active_rating ON duo (region_id, is_active, current_rating DESC);
@@ -189,7 +221,18 @@ CREATE TABLE match (
     submitted_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     confirmed_at            TIMESTAMPTZ,
     auto_confirm_deadline   TIMESTAMPTZ NOT NULL,
-    idempotency_key         VARCHAR(100) UNIQUE
+    idempotency_key         VARCHAR(100) UNIQUE,
+    -- KNLTB-aanvullingen: bij walkover/retired is score_raw de VOLTOOIDE
+    -- uitslag (grondslag voor ELO); conceding_side = kant die niet kwam /
+    -- opgaf; played_score_raw = werkelijk gespeelde stand bij opgave.
+    result_type             match_result_type NOT NULL DEFAULT 'played',
+    conceding_side          match_side,
+    played_score_raw        VARCHAR(50),
+    CONSTRAINT chk_match_result_type_fields CHECK (
+        (result_type = 'played'   AND conceding_side IS NULL     AND played_score_raw IS NULL) OR
+        (result_type = 'walkover' AND conceding_side IS NOT NULL AND played_score_raw IS NULL) OR
+        (result_type = 'retired'  AND conceding_side IS NOT NULL AND played_score_raw IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_match_status ON match (status);
@@ -197,6 +240,37 @@ CREATE INDEX idx_match_challenge ON match (challenge_id);
 -- Hooguit één niet-voided match per challenge; voided matches (overturned
 -- dispute) blijven als audit-spoor staan en blokkeren een nieuwe poging niet.
 CREATE UNIQUE INDEX idx_match_challenge_not_voided ON match (challenge_id) WHERE status <> 'voided';
+CREATE INDEX idx_match_awaiting_auto_confirm ON match (auto_confirm_deadline) WHERE status = 'awaiting_confirmation';
+
+-- ---------------------------------------------------------
+-- CHALLENGE_POSTPONEMENT  (KNLTB-aanvullingen)
+-- Uitstel van de speeltermijn in onderling overleg: één duo vraagt N dagen,
+-- het andere duo accepteert of weigert. Alleen 'accepted' verschuift
+-- challenge.match_deadline (nieuwe deadline = deadline bij acceptatie + N).
+-- ---------------------------------------------------------
+CREATE TABLE challenge_postponement (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    challenge_id            UUID NOT NULL REFERENCES challenge(id),
+    requested_by_duo_id     UUID NOT NULL REFERENCES duo(id),
+    requested_by_user_id    UUID NOT NULL REFERENCES app_user(id),
+    requested_days          SMALLINT NOT NULL CHECK (requested_days >= 1), -- max: platform_config.postponement_max_days
+    reason                  VARCHAR(500),
+    status                  postponement_status NOT NULL DEFAULT 'pending',
+    responded_by_user_id    UUID REFERENCES app_user(id),
+    previous_match_deadline TIMESTAMPTZ,   -- gezet bij acceptatie
+    new_match_deadline      TIMESTAMPTZ,   -- gezet bij acceptatie
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    responded_at            TIMESTAMPTZ,
+    CONSTRAINT chk_postponement_accepted_deadlines CHECK (
+        status <> 'accepted' OR (
+            previous_match_deadline IS NOT NULL AND new_match_deadline IS NOT NULL
+            AND new_match_deadline > previous_match_deadline
+        )
+    )
+);
+
+CREATE INDEX idx_challenge_postponement_challenge_status ON challenge_postponement (challenge_id, status);
+CREATE UNIQUE INDEX idx_challenge_postponement_one_pending ON challenge_postponement (challenge_id) WHERE status = 'pending';
 
 -- ---------------------------------------------------------
 -- RATING_HISTORY
@@ -295,6 +369,35 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX idx_audit_log_entity ON audit_log (entity_type, entity_id);
+
+-- ---------------------------------------------------------
+-- NOTIFICATION_PREFERENCE / NOTIFICATION_LOG  (KNLTB-aanvullingen)
+-- Opt-out per soort e-mail (geen rij = alles aan) en idempotentie: een
+-- log-rij wordt vóór verzending geclaimd; occurrence_key onderscheidt
+-- herhalingen (bijv. de deadline waarvoor een herinnering gold).
+-- ---------------------------------------------------------
+CREATE TABLE notification_preference (
+    user_id                     UUID PRIMARY KEY REFERENCES app_user(id),
+    challenge_received          BOOLEAN NOT NULL DEFAULT true,
+    challenge_response_reminder BOOLEAN NOT NULL DEFAULT true,
+    match_deadline_reminder     BOOLEAN NOT NULL DEFAULT true,
+    score_confirmation          BOOLEAN NOT NULL DEFAULT true,
+    dispute_resolved            BOOLEAN NOT NULL DEFAULT true,
+    postponement                BOOLEAN NOT NULL DEFAULT true,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE notification_log (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES app_user(id),
+    type            notification_type NOT NULL,
+    entity_id       UUID NOT NULL,          -- challenge / match / dispute / postponement
+    occurrence_key  VARCHAR(64) NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_notification_log_unique ON notification_log (user_id, type, entity_id, occurrence_key);
+CREATE INDEX idx_notification_log_entity ON notification_log (entity_id);
 
 -- =========================================================
 -- Opmerkingen bij ontwerpkeuzes (v1.1)

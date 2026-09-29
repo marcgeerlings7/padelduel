@@ -39,6 +39,6 @@ export default defineConfig({
     command: "npm run dev:test",
     url: "http://localhost:3100",
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 180_000, // eerste compile van de dev-server kan onder load traag zijn
   },
 });

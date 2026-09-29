@@ -25,6 +25,7 @@ const mockPrisma = {
   },
   ratingHistory: { create: vi.fn() },
   auditLog: { create: vi.fn() },
+  challengePostponement: { updateMany: vi.fn(async () => ({ count: 0 })) },
   $queryRaw: vi.fn(async () => [{ id: "locked" }]),
   $transaction: vi.fn(async (arg: unknown) => {
     if (typeof arg === "function") {
@@ -41,6 +42,13 @@ vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 const mockGetConfigNumberOrDefault = vi.fn(async (_key: string, fallback: number) => fallback);
 
 vi.mock("@/server/services/ladderService", () => ({ getLadderPositions: mockGetLadder }));
+const mockNotifyScoreSubmitted = vi.fn();
+vi.mock("@/server/services/notificationService", () => ({
+  notifySafely: async (_label: string, action: () => Promise<unknown>) => {
+    await action();
+  },
+  notifyScoreSubmitted: mockNotifyScoreSubmitted,
+}));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
   getConfigNumberOrDefault: mockGetConfigNumberOrDefault,
@@ -556,5 +564,121 @@ describe("expireUnplayedChallenges", () => {
     expect(results).toEqual([null]);
     expect(mockPrisma.duo.update).not.toHaveBeenCalled();
     expect(mockPrisma.ratingHistory.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitScore — walkover/opgave (KNLTB-aanvullingen)", () => {
+  function onlyMemberOf(duoId: string) {
+    mockPrisma.duoMembership.findFirst.mockImplementation(async ({ where }: { where: { duoId: string } }) =>
+      where.duoId === duoId ? { id: "membership" } : null,
+    );
+  }
+
+  it("walkover ingediend door de uitdager: 6-0 6-0 voor de uitdager, uitgedaagde is concedingSide", async () => {
+    onlyMemberOf("duo-a");
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockResolvedValueOnce({ id: "match-wo" });
+
+    await submitScore("challenge-1", "user-1", { resultType: "walkover" }, "key-wo");
+
+    expect(mockPrisma.match.create.mock.calls[0][0].data).toMatchObject({
+      scoreRaw: "6-0,6-0",
+      resultType: "WALKOVER",
+      concedingSide: "CHALLENGED",
+      playedScoreRaw: null,
+    });
+    expect(mockNotifyScoreSubmitted).toHaveBeenCalledWith("match-wo");
+  });
+
+  it("walkover ingediend door de uitgedaagde: 0-6 0-6, uitdager is concedingSide", async () => {
+    onlyMemberOf("duo-b");
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockResolvedValueOnce({ id: "match-wo" });
+
+    await submitScore("challenge-1", "user-3", { resultType: "walkover" }, "key-wo");
+
+    expect(mockPrisma.match.create.mock.calls[0][0].data).toMatchObject({
+      scoreRaw: "0-6,0-6",
+      resultType: "WALKOVER",
+      concedingSide: "CHALLENGER",
+    });
+  });
+
+  it("walkover door iemand die in beide duo's zit is niet eenduidig", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    await expect(submitScore("challenge-1", "user-1", { resultType: "walkover" }, "k")).rejects.toMatchObject({
+      code: "ambiguous_duo",
+    });
+    expect(mockPrisma.match.create).not.toHaveBeenCalled();
+  });
+
+  it("opgave: voltooide score voor ELO, gespeelde stand apart bewaard", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.create.mockResolvedValueOnce({ id: "match-ret" });
+
+    await submitScore(
+      "challenge-1",
+      "user-1",
+      {
+        resultType: "retired",
+        retiredSide: "challenged",
+        sets: [
+          { challengerGames: 6, challengedGames: 4 },
+          { challengerGames: 2, challengedGames: 3 },
+        ],
+      },
+      "key-ret",
+    );
+
+    expect(mockPrisma.match.create.mock.calls[0][0].data).toMatchObject({
+      scoreRaw: "6-4,6-3",
+      resultType: "RETIRED",
+      concedingSide: "CHALLENGED",
+      playedScoreRaw: "6-4,2-3",
+    });
+  });
+
+  it("ongeldige opgave-stand → invalid_score vóór enige DB-toegang", async () => {
+    await expect(
+      submitScore(
+        "challenge-1",
+        "user-1",
+        {
+          resultType: "retired",
+          retiredSide: "challenged",
+          sets: [
+            { challengerGames: 6, challengedGames: 4 },
+            { challengerGames: 6, challengedGames: 3 },
+          ],
+        },
+        "k",
+      ),
+    ).rejects.toMatchObject({ code: "invalid_score" });
+    expect(mockPrisma.challenge.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("een idempotente herhaling stuurt géén tweede notificatie", async () => {
+    mockPrisma.challenge.findUnique.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.match.findUnique.mockResolvedValueOnce({ id: "match-1", challengeId: "challenge-1" });
+    await submitScore("challenge-1", "user-1", VALID_SETS, "key-1");
+    expect(mockNotifyScoreSubmitted).not.toHaveBeenCalled();
+  });
+});
+
+describe("expireUnplayedChallenges — openstaand uitstel", () => {
+  it("zet een pending uitstelverzoek op expired in dezelfde transactie", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([{ id: "challenge-1" }]);
+    mockPrisma.challenge.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.challenge.findUniqueOrThrow.mockResolvedValueOnce(acceptedChallenge());
+    mockPrisma.duo.findUniqueOrThrow
+      .mockResolvedValueOnce(duo({ id: "duo-a" }))
+      .mockResolvedValueOnce(duo({ id: "duo-b" }));
+
+    await expireUnplayedChallenges();
+
+    expect(mockPrisma.challengePostponement.updateMany).toHaveBeenCalledWith({
+      where: { challengeId: "challenge-1", status: "PENDING" },
+      data: { status: "EXPIRED", respondedAt: expect.any(Date) },
+    });
   });
 });

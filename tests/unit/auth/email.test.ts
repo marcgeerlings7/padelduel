@@ -77,6 +77,15 @@ describe("sendEmail — via Resend", () => {
     expect(logSpy).not.toHaveBeenCalled(); // activatielink niet in de logs bij echte verzending
   });
 
+  it("stuurt een optionele HTML-versie mee naast de tekst", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "email-789" }));
+
+    await sendEmail({ ...MESSAGE, html: "<p>Hoi</p>" });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toMatchObject({ text: MESSAGE.body, html: "<p>Hoi</p>" });
+  });
+
   it("gebruikt EMAIL_FROM als die gezet is", async () => {
     vi.stubEnv("EMAIL_FROM", "Padel Ladder <noreply@padelduel.nl>");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "email-456" }));

@@ -1,382 +1,597 @@
-import type { ReactNode } from "react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Page } from "@/components/app/Page";
+import { PageHeader } from "@/components/app/PageHeader";
+import { BulletList, Details, Formula, InfoSection, Num } from "@/components/public/InfoBlocks";
+import { applyMatchResult, DEFAULT_K_FACTOR_CONFIG, DEFAULT_MARGIN_CONFIG, MARGIN_CONFIG_KEYS, expectedScore } from "@/lib/elo";
+import { DEFAULT_INACTIVE_AFTER_DAYS, INACTIVE_AFTER_DAYS_KEY } from "@/lib/stats/activity";
+import { summarizeScore } from "@/lib/match/score";
+import { getConfigNumber, getConfigNumberOrDefault } from "@/server/repositories/platformConfigRepository";
 
-const h2Style = { fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 22, margin: "0 0 8px" } as const;
-const h3Style = { fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 16, margin: "20px 0 6px" } as const;
-const pStyle = { fontSize: 15, lineHeight: 1.65, margin: 0 } as const;
-const ulStyle = { fontSize: 15, lineHeight: 1.75, margin: "8px 0 0", paddingLeft: 20 } as const;
+export const metadata: Metadata = {
+  title: "Uitleg · Padel Ladder",
+  description: "Hoe de ladder, tiers, uitdagingen, de ELO-rating, statistieken en geschillen werken.",
+};
 
-function DetailBox({ summary, children }: { summary: string; children: ReactNode }) {
-  return (
-    <details className="card" style={{ borderRadius: 0, marginTop: 16 }}>
-      <summary
-        style={{
-          cursor: "pointer",
-          fontFamily: "var(--font-heading)",
-          fontWeight: 700,
-          fontSize: 14,
-        }}
-      >
-        {summary}
-      </summary>
-      <div style={{ marginTop: 12 }}>{children}</div>
-    </details>
-  );
+// De getallen komen live uit platform_config (nooit hardcoded), dus per request renderen.
+export const dynamic = "force-dynamic";
+
+type InfoConfig = {
+  tierSize: number;
+  maxDuos: number;
+  responseDays: number;
+  matchDays: number;
+  penalty: number;
+  forfeitCooldownDays: number;
+  dissolutionCooldownDays: number;
+  autoConfirmHours: number;
+  repeatWindowDays: number;
+  forfeitDisputeDays: number;
+  marginMin: number;
+  marginMax: number;
+  inactiveDays: number;
+};
+
+async function loadConfig(): Promise<InfoConfig | null> {
+  try {
+    const [
+      tierSize,
+      maxDuos,
+      responseDays,
+      matchDays,
+      penalty,
+      forfeitCooldownDays,
+      dissolutionCooldownDays,
+      autoConfirmHours,
+      repeatWindowDays,
+      forfeitDisputeDays,
+      marginMin,
+      marginMax,
+      inactiveDays,
+    ] = await Promise.all([
+      getConfigNumber("rating_tier_size"),
+      getConfigNumber("max_active_duos_per_user"),
+      getConfigNumber("challenge_response_deadline_days"),
+      getConfigNumber("challenge_match_deadline_days"),
+      getConfigNumber("forfeit_rating_penalty"),
+      getConfigNumber("forfeit_cooldown_days"),
+      getConfigNumber("duo_dissolution_cooldown_days"),
+      getConfigNumber("match_auto_confirm_hours"),
+      getConfigNumber("repeated_opponent_window_days"),
+      getConfigNumber("forfeit_dispute_window_days"),
+      getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.minMultiplier, DEFAULT_MARGIN_CONFIG.minMultiplier),
+      getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.maxMultiplier, DEFAULT_MARGIN_CONFIG.maxMultiplier),
+      getConfigNumberOrDefault(INACTIVE_AFTER_DAYS_KEY, DEFAULT_INACTIVE_AFTER_DAYS),
+    ]);
+    return {
+      tierSize,
+      maxDuos,
+      responseDays,
+      matchDays,
+      penalty,
+      forfeitCooldownDays,
+      dissolutionCooldownDays,
+      autoConfirmHours,
+      repeatWindowDays,
+      forfeitDisputeDays,
+      marginMin,
+      marginMax,
+      inactiveDays,
+    };
+  } catch (err) {
+    console.error("Uitlegpagina: platform_config kon niet geladen worden", err);
+    return null;
+  }
 }
 
-function Formula({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        background: "var(--color-neutral-100)",
-        padding: "10px 14px",
-        margin: "10px 0",
-        fontFamily: "monospace",
-        fontSize: 13,
-        overflowX: "auto",
-      }}
-    >
-      {children}
-    </div>
-  );
+const K = DEFAULT_K_FACTOR_CONFIG;
+const START_RATING = 1200;
+const RATING_CAP = 50;
+
+function fmt(value: number, digits = 2): string {
+  return new Intl.NumberFormat("nl-NL", { maximumFractionDigits: digits, useGrouping: false }).format(value);
+}
+const days = (n: number | null) => (n === 1 ? "dag" : "dagen");
+
+const TOC = [
+  { id: "ladder", label: "Ladder" },
+  { id: "duos", label: "Duo's" },
+  { id: "tiers", label: "Tiers" },
+  { id: "uitdagen", label: "Uitdagen" },
+  { id: "speelverplichting", label: "Speelverplichting" },
+  { id: "uitslag", label: "Uitslag" },
+  { id: "rating", label: "ELO-rating" },
+  { id: "statistieken", label: "Statistieken" },
+  { id: "geschillen", label: "Geschillen" },
+  { id: "beschikbaarheid", label: "Beschikbaarheid" },
+  { id: "beheer", label: "Beheer" },
+];
+
+/** Uitgewerkt voorbeeld, doorgerekend met de échte functies en de actuele gamesaldo-instellingen. */
+function workedExample(config: InfoConfig | null) {
+  const a = { id: "A", currentRating: 1450, matchesPlayed: 20 };
+  const b = { id: "B", currentRating: 1380, matchesPlayed: 20 };
+  const summary = summarizeScore([
+    { challengerGames: 6, challengedGames: 4 },
+    { challengerGames: 6, challengedGames: 3 },
+  ]);
+  const marginConfig = config
+    ? { minMultiplier: config.marginMin, maxMultiplier: config.marginMax }
+    : DEFAULT_MARGIN_CONFIG;
+  try {
+    const outcome = applyMatchResult({
+      winner: a,
+      loser: b,
+      winnerPercentile: 0.5,
+      loserPercentile: 0.5,
+      games: { winner: summary.challengerGames, loser: summary.challengedGames },
+      marginConfig,
+    });
+    return {
+      expected: expectedScore(a.currentRating, b.currentRating),
+      games: `${summary.challengerGames}-${summary.challengedGames}`,
+      margin: (summary.challengerGames - summary.challengedGames) / (summary.challengerGames + summary.challengedGames),
+      multiplier: outcome.marginMultiplier,
+      winnerDelta: outcome.winnerNewRating - a.currentRating,
+      loserDelta: outcome.loserNewRating - b.currentRating,
+      winnerNew: outcome.winnerNewRating,
+      loserNew: outcome.loserNewRating,
+    };
+  } catch {
+    return null;
+  }
 }
 
-export default function InfoPage() {
+export default async function InfoPage() {
+  const config = await loadConfig();
+  const c = <T extends keyof InfoConfig>(key: T): number | null => (config ? config[key] : null);
+  const example = workedExample(config);
+
   return (
-    <>
-      <section
-        style={{
-          position: "relative",
-          padding: "clamp(56px,9vw,100px) clamp(20px,4vw,48px)",
-          backgroundImage:
-            "linear-gradient(180deg, rgba(20,20,20,0.55), rgba(20,20,20,0.85)), url(/images/net-closeup.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          borderBottom: "2px solid var(--color-divider)",
-        }}
-      >
-        <div style={{ maxWidth: 760, margin: "0 auto", color: "var(--color-bg)" }}>
-          <div className="tag tag-accent" style={{ marginBottom: 10 }}>
-            Uitleg
-          </div>
-          <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
-            Hoe werkt Padel Ladder?
-          </h1>
-          <p style={{ fontSize: 15, margin: "12px 0 0", maxWidth: "65ch", opacity: 0.9 }}>
-            Alles over de app, van de ladder tot precies hoe de ELO-rating wordt uitgerekend. Elk
-            onderdeel heeft een korte uitleg, en waar het nuttig is een uitklapbaar blok met alle
-            details en de exacte getallen die deze app gebruikt.
-          </p>
+    <Page>
+      <PageHeader
+        title="Hoe werkt Padel Ladder?"
+        description="Van de ladder tot de precieze ratingberekening. Elk onderdeel begint met de kern; klap een blok open voor de details en exacte getallen."
+      />
+
+      {config === null ? (
+        <div role="alert" className="rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
+          De actuele instellingen konden niet geladen worden, dus sommige getallen ontbreken (—). Probeer het later
+          opnieuw.
         </div>
+      ) : null}
+
+      {/* Kerngetallen: de instellingen waar je het vaakst mee te maken krijgt. */}
+      <section aria-labelledby="kerngetallen-title" className="flex flex-col gap-3">
+        <h2 id="kerngetallen-title" className="sr-only">
+          Kerngetallen
+        </h2>
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border shadow-card sm:grid-cols-3">
+          <KeyFigure label="Startrating nieuw duo" value={START_RATING} />
+          <KeyFigure label="Breedte van een tier" value={c("tierSize")} unit="punten" />
+          <KeyFigure label="Reageren op een uitdaging" value={c("responseDays")} unit={days(c("responseDays"))} />
+          <KeyFigure label="Spelen na acceptatie" value={c("matchDays")} unit={days(c("matchDays"))} />
+          <KeyFigure label="Strafpunten bij forfeit" value={c("penalty")} unit="punten" />
+          <KeyFigure label="Actieve duo's per speler" value={c("maxDuos")} unit="max." unitFirst />
+        </dl>
       </section>
 
-      <main className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-10 sm:px-8">
-
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>1. De ladder</h2>
-        <p style={pStyle}>
-          Alle duo&apos;s in een regio staan op één ranglijst: de ladder. Hoe hoger je rating, hoe hoger je
-          staat. Sta je gelijk met een ander duo? Dan wint het duo dat het langst meedoet (oudste
-          inschrijving eerst).
-        </p>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Je positie en je tier staan nooit vast opgeslagen — ze worden elke keer opnieuw uitgerekend op
-          basis van de actuele rating. Verandert je rating, dan verandert automatisch ook je positie.
-        </p>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>2. Tiers (niveaugroepen)</h2>
-        <p style={pStyle}>
-          De ladder is opgedeeld in <strong>tiers</strong>: stroken van steeds evenveel punten breed. Je
-          tier bepaal je niet zelf — hij volgt automatisch uit je rating. Duo&apos;s in dezelfde tier zijn
-          ongeveer even sterk, en dat zijn ook de enige duo&apos;s die je mag uitdagen.
-        </p>
-        <DetailBox summary="Uitgebreide uitleg: hoe wordt mijn tier berekend?">
-          <p style={pStyle}>
-            Je tier is je rating gedeeld door de tier-breedte, afgerond naar beneden:
-          </p>
-          <Formula>tier = afgerond naar beneden (rating ÷ tier-breedte)</Formula>
-          <p style={pStyle}>
-            Deze app gebruikt op dit moment een tier-breedte van <strong>100 punten</strong>. Dat betekent
-            bijvoorbeeld:
-          </p>
-          <ul style={ulStyle}>
-            <li>rating 1450 → tier 14 (want 1450 ÷ 100 = 14,5 → naar beneden afgerond: 14)</li>
-            <li>rating 1099 → tier 10</li>
-            <li>rating 1100 → tier 11</li>
-          </ul>
-          <p style={{ ...pStyle, marginTop: 8 }}>
-            De tier-breedte staat in de beheerinstellingen (<code>rating_tier_size</code>) en kan per
-            seizoen worden aangepast — nooit hardcoded ergens in de code.
-          </p>
-        </DetailBox>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>3. Meerdere duo&apos;s tegelijk</h2>
-        <p style={pStyle}>
-          Je hoeft niet te kiezen: je mag met verschillende vaste partners in meerdere duo&apos;s tegelijk
-          spelen (tot een maximum van <strong>5 actieve duo&apos;s per speler</strong> dit seizoen). Elk
-          duo heeft zijn eigen plek op de ladder, zijn eigen rating en zijn eigen wedstrijdgeschiedenis —
-          die worden nooit gemengd.
-        </p>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Wel geldt: dezelfde twee spelers kunnen nooit twee keer tegelijk een actief duo vormen. Wil je
-          een keer met een andere combinatie spelen? Dan moet één van je bestaande duo&apos;s eerst
-          ontbonden worden (dat vereist bevestiging van beide spelers).
-        </p>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>4. Uitdagen (challenges)</h2>
-        <p style={pStyle}>
-          Vanaf de ladder kun je een duo in jouw eigen tier uitdagen. Dat duo krijgt een aantal dagen de
-          tijd om te reageren. Reageert het niet op tijd, dan wordt de uitdaging automatisch als verlopen
-          gemarkeerd en krijgt het <strong>niet-reagerende</strong> duo een vaste puntenstraf (zie
-          &ldquo;Forfeit-penalty&rdquo; hieronder) — het duo dat wél uitdaagde, wordt niet gestraft.
-        </p>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Accepteert het duo de uitdaging, dan hebben beide duo&apos;s daarna een periode om de wedstrijd
-          ook echt te spelen. Gebeurt dat niet op tijd, dan telt dat ook als forfeit — maar dan voor{" "}
-          <strong>beide</strong> duo&apos;s, want beide hadden de afspraak kunnen nakomen.
-        </p>
-        <DetailBox summary="Uitgebreide uitleg: alle termijnen op een rij">
-          <ul style={ulStyle}>
-            <li>Reageren op een uitdaging: <strong>5 dagen</strong>, anders verloopt hij (forfeit voor het uitgedaagde duo).</li>
-            <li>Na accepteren de wedstrijd spelen: <strong>14 dagen</strong>, anders forfeit voor beide duo&apos;s.</li>
-            <li>
-              Net een forfeit-penalty gehad? Dan zit een duo <strong>3 dagen</strong> in een cooldown en kan
-              het in die periode niet uitdagen of uitgedaagd worden — zo kan een duo dat de deadline net
-              gemist heeft niet meteen weer onder druk gezet worden.
+      <nav aria-label="Onderwerpen" className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <ul className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
+          {TOC.map((item) => (
+            <li key={item.id}>
+              <a
+                href={`#${item.id}`}
+                className="inline-flex h-9 items-center rounded-full border bg-card px-3.5 text-sm font-medium whitespace-nowrap no-underline hover:bg-accent"
+              >
+                {item.label}
+              </a>
             </li>
-          </ul>
-        </DetailBox>
-      </section>
+          ))}
+        </ul>
+      </nav>
 
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>5. De wedstrijd spelen en de score doorgeven</h2>
-        <p style={pStyle}>
-          Na het spelen vult één van de twee duo&apos;s de setstanden in. Het andere duo krijgt dat te zien
-          en moet het bevestigen — pas dán wordt de rating aangepast. Reageert niemand binnen de
-          bevestigingstermijn, dan wordt de score automatisch als bevestigd beschouwd (auto-bevestiging),
-          zodat een wedstrijd niet eeuwig kan blijven &ldquo;hangen&rdquo;.
-        </p>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Klopt de score niet volgens het andere duo? Dan kan het in plaats van bevestigen een geschil
-          openen (zie punt 7).
-        </p>
-      </section>
-
-      <div
-        style={{
-          marginLeft: "calc(50% - 50vw)",
-          marginRight: "calc(50% - 50vw)",
-          height: "clamp(180px,26vw,320px)",
-          backgroundImage: "url(/images/court-high.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center 30%",
-          filter: "grayscale(1)",
-        }}
+      <InfoSection
+        id="ladder"
+        title="De ladder"
+        lead={
+          <>
+            <p>
+              Alle duo&apos;s in een regio staan op één ranglijst: hoe hoger de rating, hoe hoger de plek. Bij een
+              gelijke rating staat het duo dat het langst meedoet bovenaan.
+            </p>
+            <p>
+              Positie en tier worden nooit los opgeslagen: ze worden steeds opnieuw afgeleid uit de actuele rating.
+              Verandert je rating, dan schuift je plek direct mee. De ladder is openbaar:{" "}
+              <Link href="/ladder" className="font-semibold text-primary underline-offset-4 hover:underline">
+                bekijk hem hier
+              </Link>
+              .
+            </p>
+          </>
+        }
       />
 
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>6. De ELO-rating</h2>
-
-        <h3 style={h3Style}>Simpele uitleg</h3>
-        <p style={pStyle}>
-          Elk duo heeft een rating: een getal dat laat zien hoe goed jullie op dit moment spelen. Win je,
-          dan gaat je rating omhoog. Verlies je, dan gaat je rating omlaag. Maar hoeveel punten je wint of
-          verliest, hangt af van wie je tegenover je hebt:
-        </p>
-        <ul style={ulStyle}>
-          <li>
-            Win je van een duo dat <strong>hoger</strong> staat (sterker is)? Dan krijg je veel punten — dat
-            werd niet verwacht.
-          </li>
-          <li>
-            Win je van een duo dat <strong>lager</strong> staat (zwakker is)? Dan krijg je maar weinig
-            punten — dat was ook wel de bedoeling.
-          </li>
-          <li>Verlies je van een sterker duo? Dan verlies je maar weinig punten.</li>
-          <li>Verlies je van een zwakker duo? Dan verlies je juist veel punten — dat had niet gemogen!</li>
-        </ul>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Zo past je rating zich steeds aan, tot hij precies laat zien hoe goed je écht bent. Win je vaker
-          dan verwacht, dan stijgt je rating gestaag. Verlies je vaker dan verwacht, dan zakt hij.
-        </p>
-
-        <DetailBox summary="Uitgebreide uitleg: de exacte berekening (met formules)">
-          <p style={pStyle}>
-            Elk duo begint met een startrating van <strong>1200</strong> punten. Na elke bevestigde
-            wedstrijd wordt de rating in drie stappen herberekend.
-          </p>
-
-          <h3 style={h3Style}>Stap 1 — de verwachte winkans</h3>
-          <p style={pStyle}>
-            Eerst wordt berekend hoe groot de kans was dat jullie duo zou winnen, puur op basis van het
-            ratingverschil:
-          </p>
-          <Formula>verwachte winkans = 1 ÷ (1 + 10^((rating tegenstander − eigen rating) ÷ 400))</Formula>
-          <p style={pStyle}>
-            Dit getal ligt altijd tussen 0 en 1 (0% en 100%). Staan beide duo&apos;s precies gelijk, dan is
-            de verwachte winkans voor allebei 50%. Sta je 400 punten hoger dan je tegenstander, dan is je
-            verwachte winkans ongeveer 91%.
-          </p>
-
-          <h3 style={h3Style}>Stap 2 — de K-factor (hoeveel staat er op het spel)</h3>
-          <p style={pStyle}>
-            De K-factor bepaalt hoe groot de puntensprongen maximaal zijn. Nieuwe duo&apos;s en duo&apos;s
-            aan de absolute top krijgen een andere K-factor dan de rest:
-          </p>
-          <ul style={ulStyle}>
+      <InfoSection
+        id="duos"
+        title="Duo's"
+        lead={
+          <>
+            <p>
+              Je speelt altijd als duo. Je nodigt een partner uit met een voorstel (regio en duo-naam); zodra die
+              accepteert, staat het duo op de ladder met een startrating van <Num value={START_RATING} />.
+            </p>
+            <p>
+              Met verschillende partners mag je in meerdere duo&apos;s tegelijk spelen, tot{" "}
+              <Num value={c("maxDuos")} unit="actieve duo's" /> per speler. Elk duo heeft een eigen rating, plek en
+              wedstrijdgeschiedenis.
+            </p>
+          </>
+        }
+      >
+        <Details summary="Ontbinden en opnieuw samen spelen">
+          <BulletList>
+            <li>Dezelfde twee spelers kunnen nooit twee actieve duo&apos;s tegelijk hebben.</li>
             <li>
-              <strong>K = 40</strong> voor een duo dat nog geen 10 wedstrijden heeft gespeeld
-              (&ldquo;voorlopige&rdquo; rating — die moet nog snel zijn niveau vinden).
+              Een duo ontbinden vraagt bevestiging van beide spelers: de één vraagt het aan, de ander bevestigt.
             </li>
             <li>
-              <strong>K = 16</strong> voor een duo dat al 10+ wedstrijden speelde én bij de beste 10% van
-              de ladder hoort (voorkomt dat de nummer 1 op en neer blijft schieten).
+              Na een ontbinding kunnen dezelfde twee spelers pas na{" "}
+              <Num value={c("dissolutionCooldownDays")} unit={days(c("dissolutionCooldownDays"))} /> weer samen een duo
+              vormen.
+            </li>
+          </BulletList>
+        </Details>
+      </InfoSection>
+
+      <InfoSection
+        id="tiers"
+        title="Tiers"
+        lead={
+          <p>
+            De ladder is verdeeld in <strong>tiers</strong>: stroken van <Num value={c("tierSize")} unit="ratingpunten" />
+            . Je tier volgt automatisch uit je rating. Duo&apos;s in dezelfde tier zijn ongeveer even sterk, en alleen
+            die mag je uitdagen.
+          </p>
+        }
+      >
+        <Details summary="Hoe wordt mijn tier berekend?">
+          <p>Je tier is je rating gedeeld door de tier-breedte, naar beneden afgerond:</p>
+          <Formula>tier = ⌊ rating ÷ {c("tierSize") ?? "tier-breedte"} ⌋</Formula>
+          {c("tierSize") !== null ? (
+            <BulletList>
+              {[1450, 1099, 1100].map((rating) => (
+                <li key={rating}>
+                  rating <span className="tabular">{rating}</span> → tier{" "}
+                  <strong className="tabular">{Math.floor(rating / (c("tierSize") as number))}</strong>
+                </li>
+              ))}
+            </BulletList>
+          ) : null}
+          <p>Win je over een tiergrens heen, dan zit je vanaf dat moment in de nieuwe tier.</p>
+        </Details>
+      </InfoSection>
+
+      <InfoSection
+        id="uitdagen"
+        title="Uitdagen"
+        lead={
+          <>
+            <p>
+              Vanaf de ladder daag je een duo uit dezelfde regio én dezelfde tier uit. Een duo heeft steeds maximaal
+              één lopende uitdaging, als uitdager of als uitgedaagde.
+            </p>
+            <p>
+              Het uitgedaagde duo heeft <Num value={c("responseDays")} unit={days(c("responseDays"))} /> om te
+              accepteren of te weigeren. Weigeren kost niets.
+            </p>
+          </>
+        }
+      />
+
+      <InfoSection
+        id="speelverplichting"
+        title="Speelverplichting en forfeits"
+        lead={
+          <>
+            <p>
+              Een geaccepteerde uitdaging is een afspraak: jullie spelen de wedstrijd binnen{" "}
+              <Num value={c("matchDays")} unit={days(c("matchDays"))} />. Wie zich daar niet aan houdt, krijgt een
+              forfeit: een vaste straf van <Num value={c("penalty")} unit="punten" />.
+            </p>
+            <p>
+              Een forfeit is <strong>geen</strong> verloren wedstrijd en loopt niet via de ELO-formule. In je
+              ratinghistorie staat hij apart gemarkeerd.
+            </p>
+          </>
+        }
+      >
+        <Details summary="Wie krijgt wanneer een forfeit?">
+          <BulletList>
+            <li>
+              <strong>Niet gereageerd</strong> binnen <Num value={c("responseDays")} unit={days(c("responseDays"))} />:
+              alleen het uitgedaagde duo krijgt de straf.
             </li>
             <li>
-              <strong>K = 24</strong> voor alle overige, &ldquo;gevestigde&rdquo; duo&apos;s.
+              <strong>Niet gespeeld</strong> binnen <Num value={c("matchDays")} unit={days(c("matchDays"))} /> na
+              acceptatie: beide duo&apos;s krijgen de straf, want allebei hadden ze de afspraak kunnen nakomen. Via een
+              geschil kan een beheerder de schuld bij één duo leggen.
             </li>
-          </ul>
-          <p style={{ ...pStyle, marginTop: 8 }}>
-            Spelen dezelfde twee duo&apos;s binnen <strong>14 dagen</strong> nóg een keer tegen elkaar? Dan
-            wordt de K-factor voor die wedstrijd gehalveerd. Dat voorkomt dat twee bevriende duo&apos;s
-            elkaar steeds opnieuw uitdagen om snel punten te scoren.
-          </p>
+            <li>
+              Na een forfeit zit een duo{" "}
+              <Num value={c("forfeitCooldownDays")} unit={days(c("forfeitCooldownDays"))} /> in een cooldown: het kan
+              dan niet uitdagen of uitgedaagd worden.
+            </li>
+            <li>Een rating zakt nooit onder 0.</li>
+          </BulletList>
+        </Details>
+      </InfoSection>
 
-          <h3 style={h3Style}>Stap 3 — de nieuwe rating</h3>
-          <p style={pStyle}>De ratingverandering (het aantal punten erbij of eraf) is:</p>
-          <Formula>Δ rating = K-factor × (werkelijke uitslag − verwachte winkans)</Formula>
-          <p style={pStyle}>
-            Waarbij de werkelijke uitslag <strong>1</strong> is bij winst en <strong>0</strong> bij verlies.
-            De winnaar krijgt dus altijd een positieve Δ, de verliezer altijd een negatieve — en beide
-            Δ&apos;s zijn (bij gelijke K-factor) elkaars spiegelbeeld.
+      <InfoSection
+        id="uitslag"
+        title="De uitslag doorgeven"
+        lead={
+          <p>
+            Na de wedstrijd vult één van beide duo&apos;s de setstanden in; het andere duo bevestigt. Pas dan verandert
+            de rating. Reageert het andere duo niet binnen <Num value={c("autoConfirmHours")} unit="uur" />, dan wordt
+            de uitslag automatisch bevestigd.
           </p>
-          <p style={{ ...pStyle, marginTop: 8 }}>Twee ingebouwde grenzen zorgen dat het nooit gek uitpakt:</p>
-          <ul style={ulStyle}>
-            <li>Een enkele wedstrijd kan je rating nooit met meer dan <strong>50 punten</strong> laten stijgen of dalen.</li>
-            <li>Je rating kan nooit onder <strong>0</strong> komen.</li>
-          </ul>
+        }
+      >
+        <Details summary="Welke uitslagen zijn geldig?">
+          <BulletList>
+            <li>Een wedstrijd heeft 2 of 3 sets en een duidelijke winnaar.</li>
+            <li>Een gewone set eindigt op 6-0 tot en met 6-4, 7-5 of 7-6.</li>
+            <li>
+              Een beslissende derde set mag een match-tiebreak zijn: tot minimaal 10 punten met 2 punten verschil
+              (bijvoorbeeld 10-8 of 12-10).
+            </li>
+          </BulletList>
+        </Details>
+      </InfoSection>
 
-          <h3 style={h3Style}>Volledig uitgewerkt voorbeeld</h3>
-          <p style={pStyle}>
-            Duo A (rating 1450, 20 wedstrijden gespeeld, niet in de top 10%) verslaat duo B (rating 1380,
-            ook gevestigd):
+      <InfoSection
+        id="rating"
+        title="De ELO-rating"
+        lead={
+          <>
+            <p>
+              De rating laat zien hoe sterk jullie duo nu speelt. Winnen levert punten op, verliezen kost punten, en
+              hoeveel hangt af van de tegenstander:
+            </p>
+            <BulletList>
+              <li>Win je van een sterker duo, dan krijg je veel punten; dat werd niet verwacht.</li>
+              <li>Win je van een zwakker duo, dan krijg je weinig punten.</li>
+              <li>Verlies je van een zwakker duo, dan verlies je juist veel punten.</li>
+            </BulletList>
+            <p>
+              Ook het <strong>gamesaldo</strong> telt mee: een ruime zege (6-0 6-0) levert meer op dan een nipte zege
+              in de match-tiebreak. De winnaar wint altijd minstens 1 punt, de verliezer verliest er altijd minstens 1.
+            </p>
+          </>
+        }
+      >
+        <Details summary="Stap 1: de verwachte winkans">
+          <Formula>E = 1 ÷ (1 + 10^((rating tegenstander − eigen rating) ÷ 400))</Formula>
+          <p>
+            Staan beide duo&apos;s gelijk, dan is de verwachte winkans 50%. Sta je 400 punten hoger, dan is die
+            ongeveer 91%.
           </p>
+        </Details>
+        <Details summary="Stap 2: de K-factor">
+          <p>De K-factor bepaalt hoe groot de sprongen zijn:</p>
+          <BulletList>
+            <li>
+              <strong>K = {K.provisionalK}</strong> voor een duo met minder dan {K.provisionalMatchThreshold} gespeelde
+              wedstrijden; die rating moet nog snel zijn niveau vinden.
+            </li>
+            <li>
+              <strong>K = {K.topK}</strong> voor een gevestigd duo in de beste {Math.round(K.topPercentileThreshold * 100)}
+              % van de ladder, zodat de top stabiel blijft.
+            </li>
+            <li>
+              <strong>K = {K.establishedK}</strong> voor alle andere gevestigde duo&apos;s.
+            </li>
+          </BulletList>
+          <p>
+            Spelen dezelfde twee duo&apos;s binnen{" "}
+            <Num value={c("repeatWindowDays")} unit={days(c("repeatWindowDays"))} /> nog een keer tegen elkaar, dan
+            telt die wedstrijd half zo zwaar. Zo levert steeds hetzelfde duo uitdagen geen snelle punten op.
+          </p>
+        </Details>
+        <Details summary="Stap 3: het gamesaldo">
+          <p>
+            Games worden geteld zoals de KNLTB dat doet: gewone sets tellen hun games, een match-tiebreak telt als één
+            game (10-8 wordt 1-0).
+          </p>
+          <Formula>marge = (games winnaar − games verliezer) ÷ totaal aantal games</Formula>
           <Formula>
-            verwachte winkans A = 1 ÷ (1 + 10^((1380 − 1450) ÷ 400)) ≈ 0,60 (60%)
-            <br />
-            K-factor A = 24 (gevestigd, niet top 10%)
-            <br />
-            Δ rating A = 24 × (1 − 0,60) = 24 × 0,40 ≈ +10 punten → nieuwe rating: 1460
-            <br />
-            <br />
-            verwachte winkans B = 1 − 0,60 = 0,40 (40%)
-            <br />
-            K-factor B = 24
-            <br />
-            Δ rating B = 24 × (0 − 0,40) = 24 × −0,40 ≈ −10 punten → nieuwe rating: 1370
+            factor = {fmt(c("marginMin") ?? DEFAULT_MARGIN_CONFIG.minMultiplier)} + (
+            {fmt(c("marginMax") ?? DEFAULT_MARGIN_CONFIG.maxMultiplier)} −{" "}
+            {fmt(c("marginMin") ?? DEFAULT_MARGIN_CONFIG.minMultiplier)}) × marge
           </Formula>
-          <p style={pStyle}>
-            Duo A was favoriet (60% winkans) en wint ook — dus een bescheiden puntenwinst. Had het
-            ondergeschikte duo B gewonnen, dan had B er juist méér punten bij gekregen (K × (1 − 0,40) = 24
-            × 0,60 ≈ +14), omdat die uitslag minder werd verwacht.
+          <p>
+            Bij de nipste zege is de factor {fmt(c("marginMin") ?? DEFAULT_MARGIN_CONFIG.minMultiplier)}, bij 6-0&nbsp;6-0 is die{" "}
+            {fmt(c("marginMax") ?? DEFAULT_MARGIN_CONFIG.maxMultiplier)}. Heeft de winnaar minder games dan de
+            verliezer, dan geldt de laagste factor: de zege telt volledig, alleen zonder bonus. Beide duo&apos;s krijgen
+            dezelfde factor.
           </p>
-        </DetailBox>
-      </section>
+        </Details>
+        <Details summary="Stap 4: de nieuwe rating">
+          <Formula>Δ winnaar = K × factor × (1 − E)</Formula>
+          <Formula>Δ verliezer = −K × factor × E</Formula>
+          <BulletList>
+            <li>Er wordt symmetrisch afgerond, zodat winst en verlies bij gelijke K precies gelijk zijn.</li>
+            <li>
+              Eén wedstrijd verandert een rating nooit meer dan <strong>{RATING_CAP} punten</strong>, en een rating
+              zakt nooit onder 0.
+            </li>
+          </BulletList>
+        </Details>
+        {example ? (
+          <Details summary="Volledig uitgewerkt voorbeeld">
+            <p>
+              Duo A (rating 1450) verslaat duo B (rating 1380) met 6-4 6-3. Beide duo&apos;s zijn gevestigd en staan
+              niet in de top, dus K = {K.establishedK}.
+            </p>
+            <div className="overflow-x-auto rounded-md bg-muted px-3 py-2.5">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm whitespace-nowrap">
+                <dt className="text-muted-foreground">Verwachte winkans A</dt>
+                <dd className="tabular">{fmt(example.expected * 100, 0)}%</dd>
+                <dt className="text-muted-foreground">Games (KNLTB)</dt>
+                <dd className="tabular">{example.games}</dd>
+                <dt className="text-muted-foreground">Marge</dt>
+                <dd className="tabular">{fmt(example.margin)}</dd>
+                <dt className="text-muted-foreground">Gamesaldo-factor</dt>
+                <dd className="tabular">× {fmt(example.multiplier)}</dd>
+                <dt className="text-muted-foreground">Duo A</dt>
+                <dd className="tabular font-semibold text-win">
+                  {example.winnerDelta > 0 ? "+" : ""}
+                  {example.winnerDelta} → {example.winnerNew}
+                </dd>
+                <dt className="text-muted-foreground">Duo B</dt>
+                <dd className="tabular font-semibold text-loss">
+                  {example.loserDelta} → {example.loserNew}
+                </dd>
+              </dl>
+            </div>
+            <p>
+              A was favoriet en wint, dus een bescheiden winst. Had B gewonnen, dan had B er juist meer punten bij
+              gekregen, omdat die uitslag minder verwacht was.
+            </p>
+          </Details>
+        ) : null}
+      </InfoSection>
 
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>7. Forfeit-penalty</h2>
-        <p style={pStyle}>
-          Een forfeit-penalty is <strong>geen</strong> ELO-berekening — het is een vaste, van tevoren
-          ingestelde puntenstraf (op dit moment <strong>10 punten</strong>), die wordt afgetrokken van de
-          rating van het duo dat in gebreke is gebleven.
-        </p>
-        <ul style={ulStyle}>
-          <li>
-            <strong>Niet gereageerd</strong> op een uitdaging binnen 5 dagen → alleen het uitgedaagde duo
-            krijgt de straf.
-          </li>
-          <li>
-            <strong>Niet gespeeld</strong> binnen 14 dagen na acceptatie → beide duo&apos;s krijgen de
-            straf (allebei hadden de afspraak kunnen nakomen).
-          </li>
-        </ul>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Zo&apos;n straf raakt daarna nooit op onder de 0 punten, en start een cooldown van 3 dagen (zie
-          punt 4).
-        </p>
-      </section>
+      <InfoSection
+        id="statistieken"
+        title="Statistieken"
+        lead={
+          <p>
+            Naast de rating houdt de app per duo bij hoe het ervoor staat. Alles wordt afgeleid uit bevestigde
+            wedstrijden en uitdagingen; niets wordt los bijgehouden.
+          </p>
+        }
+      >
+        <Details summary="Wat betekenen de cijfers?">
+          <BulletList>
+            <li>
+              <strong>Winst–verlies en reeks:</strong> alleen bevestigde wedstrijden tellen. De reeks is het aantal
+              gewonnen of verloren wedstrijden op rij. Een forfeit telt hier niet als verlies.
+            </li>
+            <li>
+              <strong>Set- en gamesaldo:</strong> gewonnen min verloren sets en games, met dezelfde KNLTB-telling als
+              de rating.
+            </li>
+            <li>
+              <strong>Betrouwbaarheid:</strong> welk deel van de uitdagingen echt gespeeld is. Forfeits die aan het
+              duo toe te rekenen zijn, tellen mee als niet gespeeld; een geweigerde uitdaging telt niet mee.
+            </li>
+            <li>
+              <strong>Inactief:</strong> een duo dat langer dan{" "}
+              <Num value={c("inactiveDays")} unit={days(c("inactiveDays"))} /> niets heeft gedaan (geen wedstrijd
+              gespeeld, geen uitdaging verstuurd of geaccepteerd). Het label is alleen informatief.
+            </li>
+            <li>
+              <strong>Wedstrijdhistorie en onderling resultaat:</strong> alle gespeelde wedstrijden, ongeldig
+              verklaarde wedstrijden en forfeits van een duo, en de uitslagen tussen twee duo&apos;s.
+            </li>
+          </BulletList>
+        </Details>
+      </InfoSection>
 
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>8. Geschillen (disputes)</h2>
-        <p style={pStyle}>
-          Er zijn twee soorten geschillen die je kunt openen:
-        </p>
-        <ul style={ulStyle}>
-          <li>
-            <strong>Score-geschil:</strong> je bent het niet eens met een ingevoerde uitslag. In plaats van
-            te bevestigen, open je een geschil met een toelichting.
-          </li>
-          <li>
-            <strong>Forfeit-geschil:</strong> je vindt dat een opgelegde forfeit-penalty onterecht was
-            (bijvoorbeeld omdat je wél op tijd probeerde te spelen). Dit kan tot 5 dagen na de forfeit.
-          </li>
-        </ul>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Een beheerder bekijkt elk geschil en beslist: de oorspronkelijke uitslag/straf handhaven, de
-          wedstrijd ongeldig verklaren, of — bij een forfeit-geschil — de straf alsnog eenzijdig aan één van
-          de twee duo&apos;s toewijzen. Wordt een score alsnog goedgekeurd, dan wordt de ELO-berekening pas
-          op dat moment alsnog verwerkt.
-        </p>
-      </section>
+      <InfoSection
+        id="geschillen"
+        title="Geschillen"
+        lead={
+          <p>
+            Klopt een ingevoerde uitslag niet, of vind je een forfeit onterecht? Open een geschil met een toelichting.
+            Zolang een geschil loopt, verandert er niets aan de rating. Een beheerder beslist.
+          </p>
+        }
+      >
+        <Details summary="Score-geschil: wat kan er gebeuren?">
+          <BulletList>
+            <li>
+              <strong>Uitslag blijft staan:</strong> de rating wordt alsnog verwerkt, op het moment van de beslissing.
+            </li>
+            <li>
+              <strong>Uitslag ongeldig:</strong> de wedstrijd telt niet mee. De uitdaging loopt door en jullie spelen
+              opnieuw, met een nieuwe speeltermijn van{" "}
+              <Num value={c("matchDays")} unit={days(c("matchDays"))} /> vanaf de beslissing (nooit korter dan de
+              oorspronkelijke). Wordt de nieuwe wedstrijd niet op tijd gespeeld, dan volgt de gewone forfeit.
+            </li>
+          </BulletList>
+        </Details>
+        <Details summary="Forfeit-geschil: wat kan er gebeuren?">
+          <p>
+            Kan alleen bij een forfeit wegens niet spelen, tot{" "}
+            <Num value={c("forfeitDisputeDays")} unit={days(c("forfeitDisputeDays"))} /> na de forfeit.
+          </p>
+          <BulletList>
+            <li>
+              <strong>Straf blijft staan</strong> voor beide duo&apos;s.
+            </li>
+            <li>
+              <strong>Schuld bij één duo:</strong> alleen dat duo houdt de straf; bij het andere duo worden de punten
+              teruggezet. Beide mutaties blijven zichtbaar in de historie.
+            </li>
+          </BulletList>
+        </Details>
+      </InfoSection>
 
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>9. Beschikbaarheid</h2>
-        <p style={pStyle}>
-          Geef per dag aan wanneer jullie duo &apos;s ochtends, &apos;s middags of &apos;s avonds kan
-          spelen, zodat een tegenstander na een geaccepteerde uitdaging makkelijk een moment kan vinden.
-        </p>
-        <p style={{ ...pStyle, marginTop: 8 }}>
-          Deze gegevens zijn ook te zien via een externe API (bijvoorbeeld voor een vereniging die
-          baanplanning wil combineren). Daarin wordt <strong>nooit</strong> een e-mailadres of gebruikers-id
-          gedeeld — alleen de duo-naam, de regio en het tijdsblok.
-        </p>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      <section>
-        <h2 style={h2Style}>10. Voor beheerders</h2>
-        <p style={pStyle}>
-          Beheerders kunnen openstaande geschillen beoordelen, API-clients voor de externe koppeling
-          aanmaken en intrekken, en op de configuratiepagina alle instelbare waarden uit deze uitleg (de
-          tier-breedte, deadlines, penalty&apos;s, het maximum aantal duo&apos;s) terugvinden — nooit
-          hardcoded, altijd op één centrale plek aanpasbaar.
-        </p>
-      </section>
-      </main>
-
-      <div
-        style={{
-          height: "clamp(200px,30vw,360px)",
-          backgroundImage: "url(/images/paddle-serve.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center 30%",
-          filter: "grayscale(1)",
-        }}
+      <InfoSection
+        id="beschikbaarheid"
+        title="Beschikbaarheid"
+        lead={
+          <>
+            <p>
+              Geef per duo aan wanneer jullie kunnen spelen. Kies snel een dagdeel (ochtend, middag of avond) of voer
+              een eigen tijdsblok in met dag, begin- en eindtijd, elke week of eenmalig. Beide spelers kunnen blokken
+              toevoegen, bewerken en verwijderen.
+            </p>
+            <p>
+              Deze tijden zijn ook beschikbaar via een externe koppeling, bijvoorbeeld voor een club die baanplanning
+              wil afstemmen. Daarin staan <strong>nooit</strong> e-mailadressen of gebruikers-id&apos;s, alleen de
+              duo-naam, de regio en de tijdsblokken.
+            </p>
+          </>
+        }
       />
-    </>
+
+      <InfoSection
+        id="beheer"
+        title="Voor beheerders"
+        lead={
+          <p>
+            Beheerders handelen geschillen af, beheren de API-sleutels voor de externe koppeling, wijzen andere
+            beheerders aan en zien alle instelbare waarden op deze pagina op één centrale plek terug.
+          </p>
+        }
+      />
+    </Page>
+  );
+}
+
+function KeyFigure({
+  label,
+  value,
+  unit,
+  unitFirst = false,
+}: {
+  label: string;
+  value: number | null;
+  unit?: string;
+  unitFirst?: boolean;
+}) {
+  return (
+    <div className="flex flex-col-reverse gap-1 bg-card px-4 py-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="flex items-baseline gap-1.5">
+        {unitFirst && unit ? <span className="text-sm text-muted-foreground">{unit}</span> : null}
+        <span className="font-score text-[2rem]">{value === null ? "—" : fmt(value)}</span>
+        {!unitFirst && unit ? <span className="text-sm text-muted-foreground">{unit}</span> : null}
+      </dd>
+    </div>
   );
 }
