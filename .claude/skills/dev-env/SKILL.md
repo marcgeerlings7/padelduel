@@ -19,4 +19,13 @@ bash .devcontainer/start.sh
 - Playwright-browser: `npx playwright install --with-deps chromium`.
 - Tools: `claude --version`, `vercel whoami` (inloggen: `vercel login`).
 
+- graphify: `export PATH="$HOME/.local/bin:$PATH"; graphify update .` en `graphify hook install` (git-hooks staan niet in git).
+- `npm ci` afgebroken (bijv. door geheugendruk) → `node_modules` is half leeg en `npx prisma` pakt dan een verkeerde globale versie. Draai `npm ci` opnieuw en controleer `ls node_modules/.bin/prisma`.
+- Let op: `pkill -f "<patroon>"` kan je eigen shell raken als het patroon in de opdracht staat; stop servers liever via poort (`ss -ltnp`) + PID.
+
+## Productie (Vercel + Neon)
+- Status/logs: `vercel ls --prod`, `vercel inspect <deployment-url> --logs` (CLI moet ingelogd + gelinkt zijn: `vercel login`, `vercel link --project padelduel`).
+- Publiek domein: https://padelduel.vercel.app (team-URL's zitten achter Vercel Authentication).
+- Productie-DB-opdrachten: `vercel env pull --environment=production <scratchpad-bestand>`, `DATABASE_URL=<DATABASE_URL_UNPOOLED>` meegeven, bestand daarna verwijderen. Nooit `.env.local` en nooit `scripts/seed.ts`.
+
 Rapporteer wat er mis was en wat je hersteld hebt; reset NOOIT de dev-database (`padel_ladder_dev`) zonder toestemming — die bevat handmatige testdata van de gebruiker.

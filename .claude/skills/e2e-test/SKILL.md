@@ -11,10 +11,18 @@ description: Schrijf of draai Playwright e2e-tests voor een user-facing flow vol
 - `workers: 1`, gedeelde database: tests mogen niet afhankelijk zijn van volgorde tussen bestanden; maak eigen data aan waar nodig.
 - Viewport is mobiel (390×844); selecteer bij voorkeur op role/label/tekst, niet op CSS-klassen.
 
+- Elke spec gebruikt eigen seed-data (scripts/seed.ts); regio Zwolle (users 21–27) is voor 08–10. Nieuwe spec met nieuwe data? Voeg die toe aan de seed zonder bestaande specs te raken (Utrecht-ladder = precies 10 duo's).
+- Pas op met `getByText` op statuswoorden ("Geaccepteerd", "Betwist"): die kunnen ook in badges/toasts staan (strict-mode-fout). Scope op de kaart (`li[data-group]`) of het `li`-item.
+- De ladder heeft één `<tbody>` per tier: zoek in `table`, niet in `tbody`.
+- Formulieren met eigen validatie hebben `noValidate`; test op de Nederlandse foutmelding.
+
 ## Draaien
 - Volledig: `npm run test:e2e` (reset + seed testdatabase, start `dev:test` zelf).
 - Eén bestand: `npm run db:test:reset && npx playwright test tests/e2e/04-disputes.spec.ts`.
 - Zorg dat er niet al een server op :3100 draait (`reuseExistingServer: false`): `pkill -f "dev:test"` indien nodig.
+
+- Timeouts: test 60s, assertions 15s, webServer-start 180s (on-demand compile in `next dev`). Een eerste bezoek aan een zware route kan traag zijn — dat is geen bug.
+- Geheugen (8 GB): geen andere Next-servers of builds tegelijk. Crasht Chromium ("Target crashed"), stop andere servers; als noodgreep launch-args `--no-zygote --renderer-process-limit=1`.
 
 ## Bij falen
 - Traces staan in `test-results/` (`trace: retain-on-failure`); bekijk met `npx playwright show-trace <pad>/trace.zip`.

@@ -171,6 +171,8 @@ Met Sprint 5 is de volledige v1-scope uit de PRD (Sprint 1 t/m 5) functioneel ge
 ## Visuele restyling (na Sprint 5, op verzoek)
 
 ### Design system "Modernist" verwerkt uit /websitedesign
+> **Vervangen (2026-09-28)** door design system "Court" (docs/Design_System.md); `/websitedesign` is verouderd.
+
 **Wat:** de door de gebruiker aangeleverde `/websitedesign`-map (een Claude-gegenereerd design system + schermmockup) is verwerkt als de daadwerkelijke styling van de app: `src/app/design-system.css` (kopie van de tokens/componentklassen), Archivo-lettertype via `next/font/google`, en alle bestaande pagina's herstijld met de nieuwe componentklassen (`.btn`, `.card`, `.tag`, `.table`, `.field`/`.input`, `.hr`). Geen dark-mode meer (het design system is bewust single-theme).
 **Belangrijk:** dit was een **presentatie-only** wijziging — geen enkele service, API-route of databaselaag is aangeraakt. Alle 165 unit tests en 6 e2e-tests slagen ongewijzigd; één e2e-selector (`tr.bg-yellow-100` → `tr[data-own="true"]`) is aangepast omdat de visuele stijl van "eigen duo" veranderde, niet de onderliggende logica.
 **`/websitedesign` blijft in de repo staan** als brondocumentatie voor het design system (tokens aanpassen kan daar, zie het `readme.md` erin) — het is geen onderdeel van de gebouwde app zelf.
@@ -233,6 +235,8 @@ Moeten in Vercel (Project Settings → Environment Variables) gezet worden — s
 **Risico:** GitHub Actions-schedules kunnen bij drukte enkele minuten tot ~een half uur vertraagd zijn en worden na 60 dagen repo-inactiviteit automatisch uitgeschakeld. Alle jobs zijn idempotent, dus vertraging of een dubbele run is veilig. Bij een Vercel Pro-plan kan de cron terug naar elk uur en de workflow weg.
 
 ### E-mail wordt nog niet echt verstuurd
+> **Deels opgelost (Post-v1):** `sendEmail` verstuurt via Resend zodra `RESEND_API_KEY` (+ `EMAIL_FROM` met geverifieerd domein) gezet is. Op productie is dat nog niet gedaan (keuze PO 2026-09-29), dus onderstaande geldt daar nog.
+
 **Wat:** `sendEmail` (`src/lib/auth/email.ts`) logt de activatielink alleen naar de servers-console (Vercel Function Logs) — er is nog geen echte provider gekoppeld (bewuste, nog niet ingevulde PRD-open-vraag, zie eerdere Sprint 1-notitie). Op Vercel betekent dit concreet: na registreren moet de activatielink even uit de Vercel Function Logs gehaald worden om een account te activeren, i.p.v. dat de gebruiker een e-mail ontvangt.
 **Risico:** Prima voor een demo aan vrienden; niet geschikt voor een echte rollout zonder een provider (Resend/Postmark/SES) te koppelen.
 **Opgelost (post-v1, 2026-09-28):** zet `RESEND_API_KEY` (+ `EMAIL_FROM`) in Vercel; zonder key blijft het console-gedrag; zie "Post-v1 (akkoord PO 2026-09-28)" onderaan.
@@ -363,7 +367,7 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 |---|---|---|
 | `GET /api/duos/invitations` | Bevatte alleen user-id's; de uitgenodigde kon niet zien wie uitnodigde | `proposedByName`/`invitedUserName` (publieke naam) toegevoegd, nooit e-mail |
 | `GET /api/duos/[id]/challenges` | Volledige duo-rijen van de tegenstander, incl. `memberPairKey` (= user-id's van de leden) en `dissolutionRequestedByUserId` | Beperkt tot `id, name, regionId, currentRating, isActive, category` |
-| `GET /api/dashboard` (`partnerEmail`) | E-mailadres van de eigen duo-partner | **Niet gewijzigd** (dashboardService-shape wordt parallel uitgebreid); advies: `partnerDisplayName` toevoegen en `partnerEmail` laten vervallen bij de merge/redesign |
+| `GET /api/dashboard` (`partnerEmail`) | E-mailadres van de eigen duo-partner | **Opgelost (2026-09-29):** vervangen door `partnerName` (weergavenaam/fallback), zie "Integratie-UI" |
 | `POST /api/duos/propose` | Uitnodigen gaat via het e-mailadres; foutmelding "Gebruiker met dit e-mailadres niet gevonden" verraadt of een adres geregistreerd is (enumeratie) | Ongewijzigd (UX-keuze); restrisico, zie hieronder |
 | `GET /api/admin/disputes`, `GET /api/admin/users` | E-mail zichtbaar, maar alleen voor admins | E-mail blijft (contact), `displayName` toegevoegd; admin-zoeken zoekt ook op naam |
 | Ladder, rating-historie, externe API, notificatiemails | Geen e-mailadressen | — |

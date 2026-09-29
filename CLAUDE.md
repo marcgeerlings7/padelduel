@@ -25,7 +25,25 @@ input-validatie, transacties waar consistentie vereist is.
   geen user-id's) — alleen duo-naam, regio en tijdsblokken.
 
 ## Stack
-Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en ER-diagram.
+- **Next.js 14.2 (App Router) + React 18 + TypeScript** — bewust NIET upgraden naar
+  Next 15 / React 19 zonder overleg (shadcn-componenten zijn naar React 18
+  `forwardRef` omgezet, zie docs/Design_System.md §9).
+- **Prisma 5 + PostgreSQL** (lokaal Docker-container `padel-ladder-db`, productie
+  Neon via Vercel). Schema/ER-diagram: /docs/Database_Schema.sql, /docs/ER_Diagram.mermaid.
+- **UI: design system "Court"** — Tailwind v4 (CSS-first, geen tailwind.config) +
+  shadcn/ui + Kokonut UI + Bklit UI (charts) + Motion (`motion/react`). Briefing:
+  /docs/Design_System.md; levende catalogus `/design` (alleen in `npm run dev`).
+- Tests: Vitest (unit, `tests/unit`) en Playwright (e2e, `tests/e2e`).
+
+## UI-regels
+- Nieuwe UI gebruikt uitsluitend de Court-kit (`src/components/ui`, `src/components/app`)
+  en wordt in `<Page>` gewikkeld (licht/donker thema). Geen legacy-klassen
+  (`.btn`, `.card`, …) of losse kleuren; mobiel eerst (390×844).
+- Ontbrekende primitives/blokken toevoegen **via de shadcn-registry**
+  (`npx shadcn@latest add …`, `@kokonutui/…`, `@bklit/…`, of de shadcn-MCP), niet
+  zelf uitschrijven; daarna de fix-ups uit Design_System.md toepassen.
+- Inhoud nooit alleen via scroll-animaties (whileInView) zichtbaar maken; respecteer reduced motion.
+- Toon andere spelers altijd met hun weergavenaam (`publicDisplayName`), nooit met e-mailadres.
 
 ## Werkwijze
 - **Altijd eerst graphify raadplegen** bij vragen over de codebase of vóór het
@@ -40,10 +58,15 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
 - Vanaf Sprint 4: voeg voor elke nieuwe user-facing flow ook een Playwright
   e2e-test toe in /tests/e2e (zie playwright.config.ts — draait tegen een
   aparte database op poort 3100, nooit tegen de dev-omgeving op poort 3000).
-  `npm run test:e2e` reset die testdatabase eerst volledig.
+  `npm run test:e2e` reset die testdatabase eerst volledig. Nieuwe specs gebruiken
+  eigen seed-data (zie scripts/seed.ts: regio Zwolle is voor e2e 08–10) zodat
+  specs elkaar niet beïnvloeden; selecteer op rol/label/tekst, niet op stylingklassen.
 - Gebruik de bestaande Prisma-modellen; wijzig het schema alleen na expliciete instructie.
-- Volg per sprint het bijbehorende document (/docs/Sprint1_User_Stories.md t/m
-  Sprint5_User_Stories.md) voor scope — bouw nooit vooruit op een latere sprint.
+  Een al toegepaste migratie wordt nooit achteraf gewijzigd — altijd een nieuwe migratie
+  (config-rijen voor `platform_config` ook via een (data-)migratie).
+- Scope: Sprint 1–5 (/docs/Sprint1_User_Stories.md t/m Sprint5_User_Stories.md)
+  plus de hieronder vastgelegde post-v1-akkoorden. Alles daarbuiten (bijv. seizoenen)
+  pas bouwen na expliciet akkoord van de PO, en dat akkoord hier vastleggen.
 - Ga NOOIT door naar de volgende sprint zonder expliciete goedkeuring van de PO.
   Sluit elke sprint af met een testrun + sprint-review-samenvatting (zie
   Claude_Code_Bouwplan.md §8) en wacht op akkoord.
@@ -77,6 +100,42 @@ Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en 
   (naam, optionele speelsterkte/categorie) + startrating nieuw duo uit
   bestaande duo-ratings; gamesaldo in de ELO-formule (forfeits blijven
   buiten de formule). NIET: seizoenen (bewust uitgesteld).
+- Post-v1 + KNLTB-aanvullingen + Court-redesign: gebouwd, gemerged en live op
+  2026-09-29 (498 unit tests, 16 e2e-specs groen). Details, beslissingen en
+  restrisico's: /docs/Technical_Debt.md (secties "Post-v1", "KNLTB-aanvullingen",
+  "Integratie-UI", "Vercel-deploy"). Openstaande PO-keuzes: overzicht van
+  API-clients die de rate limit overschrijden, bevestigingsstap bij het afhandelen
+  van disputes, Resend-domein koppelen, `/websitedesign` verwijderen.
+
+## Productie & deploy
+- Live op **https://padelduel.vercel.app** (publiek domein). De
+  `*-projects.vercel.app`-team-URL's zitten achter Vercel Authentication — nooit
+  gebruiken als `APP_BASE_URL`/`APP_URL`.
+- Elke push naar `main` deployt automatisch. `npm run vercel-build` draait
+  `prisma migrate deploy` **alleen bij `VERCEL_ENV=production`**, via
+  `DATABASE_URL_UNPOOLED` (directe Neon-verbinding); de app gebruikt runtime
+  `POSTGRES_PRISMA_URL` (pooler) als die bestaat (src/lib/prisma.ts).
+- Env-vars staan in Vercel (`vercel env ls`), nooit in de repo. Productiedata
+  alleen via `vercel env pull --environment=production <tijdelijk bestand>` —
+  nooit naar `.env.local` (die heeft voorrang op `.env` in `next dev`).
+- `scripts/seed.ts` NOOIT tegen productie. Lege omgeving inrichten:
+  `scripts/bootstrap-production.ts --region "<naam>" --admin <email>`.
+- Achtergrondjobs (`/api/jobs/run-all`): Vercel Cron dagelijks (Hobby-limiet: een
+  uurlijkse cron laat de hele deploy falen!) + `.github/workflows/hourly-jobs.yml`
+  elk uur (secrets `APP_URL`, `JOBS_SECRET`).
+- Route handlers zonder request-afhankelijkheid legt Next 14 bij de build statisch
+  vast — database-GET's krijgen `export const dynamic = "force-dynamic"`.
+
+## Omgeving & tooling
+- Codespace: `.devcontainer/start.sh` (bij elke start, idempotent) regelt `.env`,
+  Postgres-container, migraties, seed (alleen lege dev-db), dev-server, Playwright
+  Chromium, Claude Code CLI, graphify (+ git-hooks) en Vercel CLI.
+- Beperkt geheugen (8 GB / 2 cores): draai hooguit één Next-server tegelijk naast
+  de e2e-run; parallelle agents mogen geen e2e draaien (gedeelde testdatabase).
+- Project-skills in `.claude/skills` (o.a. `sprint-review`, `e2e-test`, `dev-env`,
+  `frontend-design`, `web-design-guidelines`, `vercel-*`, `neon-postgres`, graphify);
+  MCP-servers in `.mcp.json` (Vercel, shadcn).
+- Reset NOOIT `padel_ladder_dev` zonder toestemming (handmatige testdata van de PO).
 
 ## Wat NIET bouwen (zie PRD §4)
 Chat, social feed, club-administratie, fysieke baanreservering/boeking, advertenties.
