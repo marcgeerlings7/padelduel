@@ -4,7 +4,7 @@
 # laat de hele deploy falen.
 #
 # Vereiste repository-secrets (Settings → Secrets and variables → Actions):
-#   APP_URL      — productie-URL zonder slash aan het eind, bijv. https://padelduel.vercel.app
+#   APP_URL      — productie-URL zonder slash aan het eind, bijv. https://padelduel.vercel.app (het publieke domein, NIET de *-projects.vercel.app-team-URL)
 #   JOBS_SECRET  — exact dezelfde waarde als JOBS_SECRET in Vercel
 name: Uurlijkse jobs
 
@@ -29,6 +29,13 @@ jobs:
             echo "::warning::APP_URL of JOBS_SECRET ontbreekt als repository-secret; jobs overgeslagen."
             exit 0
           fi
-          curl --fail-with-body -sS --max-time 120 -X POST \
+          status=$(curl -sS --max-time 120 -o response.json -w "%{http_code}" -X POST \
             -H "x-job-secret: $JOBS_SECRET" \
-            "$APP_URL/api/jobs/run-all"
+            "$APP_URL/api/jobs/run-all")
+          cat response.json; echo
+          # Alleen 200 is succes: een 302 (bijv. Vercel Authentication op een
+          # team-URL i.p.v. het publieke domein) of 401 (verkeerd secret) moet falen.
+          if [ "$status" != "200" ]; then
+            echo "::error::run-all gaf HTTP $status (verwacht 200). Controleer APP_URL (publiek domein) en JOBS_SECRET."
+            exit 1
+          fi
