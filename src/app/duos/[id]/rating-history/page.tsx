@@ -1,18 +1,30 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { Page } from "@/components/app/Page";
+import { PageHeader } from "@/components/app/PageHeader";
 import { DuoRatingHistoryView } from "@/components/duo/DuoRatingHistoryView";
+import { DuoMeta } from "@/components/matches/DuoMeta";
+import { DuoSectionNav } from "@/components/matches/DuoSectionNav";
+import { useOwnDuos } from "@/components/matches/useOwnDuos";
 
-export default function RatingHistoryPage() {
+export default function DuoRatingHistoryPage() {
   const params = useParams<{ id: string }>();
+  const { duos } = useOwnDuos();
+  const duo = duos?.find((d) => d.id === params.id) ?? null;
+  const own = duos === null || duo !== null;
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-8 sm:px-8">
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
-        Ratinggeschiedenis
-      </h1>
-      <div className="hr" style={{ margin: 0 }} />
-      <DuoRatingHistoryView duoId={params.id} />
-    </main>
+    <Page>
+      <PageHeader
+        title="Ratinggeschiedenis"
+        back={{ href: "/dashboard", label: "Mijn duo's" }}
+        meta={duos && !duo ? null : <DuoMeta name={duo?.name ?? null} regionName={duo?.region.name} tier={duo?.tier} own />}
+      />
+      <div className="flex flex-col gap-5">
+        <DuoSectionNav duoId={params.id} current="rating-history" own={own} />
+        <DuoRatingHistoryView duoId={params.id} regionSlug={duo?.region.slug} />
+      </div>
+    </Page>
   );
 }

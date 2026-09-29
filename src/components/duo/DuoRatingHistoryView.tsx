@@ -1,9 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChevronRight, LineChart as LineChartIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiFetch, ApiError } from "@/lib/client/api";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatedNumber } from "@/components/app/AnimatedNumber";
+import { EmptyState } from "@/components/app/EmptyState";
+import { formatRating } from "@/components/app/format";
+import { ChartSkeleton, StatGridSkeleton, TableSkeleton } from "@/components/app/LoadingSkeletons";
+import { RatingChart } from "@/components/app/RatingChart";
+import { RatingDelta } from "@/components/app/RatingDelta";
+import { toRatingSeries } from "@/components/app/rating-series";
+import { SectionCard } from "@/components/app/SectionCard";
+import { StatCard } from "@/components/app/StatCard";
+import { formatShortDate } from "@/components/matches/time";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ApiError, apiFetch } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
+import { cn } from "@/lib/utils";
 
 type RatingHistoryEntry = {
   id: string;
@@ -17,111 +32,215 @@ type RatingHistoryEntry = {
   opponentName: string | null;
 };
 
-function RatingChart({ points }: { points: number[] }) {
-  if (points.length < 2) return null;
-  const w = 640;
-  const h = 200;
-  const pad = 20;
-  const max = Math.max(...points);
-  const min = Math.min(...points);
-  const coords = points.map((v, i) => {
-    const x = pad + (i / (points.length - 1)) * (w - pad * 2);
-    const y = pad + (1 - (v - min) / (max - min || 1)) * (h - pad * 2);
-    return [x, y] as const;
-  });
-  const path = coords.map((c, i) => (i === 0 ? "M" : "L") + c[0].toFixed(1) + "," + c[1].toFixed(1)).join(" ");
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "auto", display: "block" }}>
-      <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="var(--color-divider)" strokeWidth={2} />
-      <path d={path} fill="none" stroke="var(--color-accent)" strokeWidth={3} />
-      {coords.map((c, i) => (
-        <circle key={i} cx={c[0]} cy={c[1]} r={3} fill="var(--color-text)" />
-      ))}
-    </svg>
-  );
+type LadderResponse = {
+  tierSize: number;
+  ladder: { id: string; position: number; tier: number; currentRating: number }[];
+};
+
+type EntryKind = "match" | "forfeit" | "correction";
+
+/**
+ * Soort mutatie. Forfeits lopen nooit via ELO; een forfeit-rij met een
+ * stijging is een correctie na een toegekende forfeit-dispute.
+ * "Wedstrijdresultaat" is e2e-contract (rij = `<tr>` met "1160 → …").
+ */
+function kindOf(entry: RatingHistoryEntry): EntryKind {
+  if (!entry.isForfeit) return "match";
+  return entry.ratingAfter >= entry.ratingBefore ? "correction" : "forfeit";
 }
 
-export function DuoRatingHistoryView({ duoId }: { duoId: string }) {
+const KIND_BADGE: Record<EntryKind, { label: string; variant: "muted" | "loss" | "win" }> = {
+  match: { label: "Wedstrijdresultaat", variant: "muted" },
+  forfeit: { label: "Forfeit-penalty", variant: "loss" },
+  correction: { label: "Forfeit-correctie", variant: "win" },
+};
+
+/**
+ * Ratinggeschiedenis van één duo: kerngetallen, verloop (Bklit-chart met
+ * tier-grenzen) en een tabel met elke mutatie. `regionSlug` (optioneel) haalt
+ * tier_size en de ladderpositie op via /api/ladder.
+ */
+export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; regionSlug?: string }) {
   const router = useRouter();
   const [history, setHistory] = useState<RatingHistoryEntry[] | null>(null);
+  const [ladder, setLadder] = useState<LadderResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!getStoredToken()) {
       router.push("/login");
       return;
     }
+    let cancelled = false;
     setHistory(null);
+    setError(null);
     apiFetch<RatingHistoryEntry[]>(`/api/duos/${duoId}/rating-history`)
-      .then(setHistory)
+      .then((data) => {
+        if (!cancelled) setHistory(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) {
           router.push("/login");
           return;
         }
         setError("Kon de ratinggeschiedenis niet laden.");
       });
-  }, [duoId, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [duoId, router, attempt]);
+
+  useEffect(() => {
+    if (!regionSlug) return;
+    let cancelled = false;
+    // Alleen voor tier-grenzen en positie; zonder deze data werkt de pagina ook.
+    apiFetch<LadderResponse>(`/api/ladder?regionSlug=${encodeURIComponent(regionSlug)}`)
+      .then((data) => {
+        if (!cancelled) setLadder(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [regionSlug]);
+
+  const series = useMemo(() => (history ? toRatingSeries(history) : []), [history]);
+  const ladderEntry = ladder?.ladder.find((e) => e.id === duoId) ?? null;
 
   if (error) {
-    return <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{error}</p>;
-  }
-  if (!history) {
-    return <p className="text-sm">Laden...</p>;
+    return (
+      <div role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">
+        <p>{error}</p>
+        <Button type="button" size="sm" variant="outline" onClick={() => setAttempt((n) => n + 1)}>
+          Opnieuw proberen
+        </Button>
+      </div>
+    );
   }
 
-  const currentRating = history[0]?.ratingAfter;
-  // chronologisch (oud → nieuw) voor de grafiek, terwijl de tabel nieuw → oud toont
-  const points = [...history].reverse().map((entry) => entry.ratingAfter);
+  if (!history) {
+    return (
+      <div className="flex flex-col gap-6">
+        <StatGridSkeleton count={3} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
+        <ChartSkeleton aspectRatio="16 / 9" />
+        <TableSkeleton rows={5} columns={4} />
+      </div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <EmptyState
+        icon={LineChartIcon}
+        title="Nog geen ratingwijzigingen"
+        description="De rating verandert zodra een wedstrijd bevestigd is, of bij een forfeit-penalty."
+        action={
+          <Button asChild>
+            <Link href={`/duos/${duoId}/challenges`}>Naar challenges</Link>
+          </Button>
+        }
+      />
+    );
+  }
+
+  const latest = history[0];
+  const current = ladderEntry?.currentRating ?? latest.ratingAfter;
+  const ratings = series.map((p) => p.rating);
+  const peak = Math.max(...ratings);
+  const low = Math.min(...ratings);
+  const matchCount = history.filter((e) => !e.isForfeit).length;
+  const forfeitCount = history.filter((e) => kindOf(e) === "forfeit").length;
 
   return (
-    <>
-      {currentRating !== undefined && (
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 32 }}>{currentRating}</div>
-        </div>
-      )}
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <StatCard
+          emphasis
+          label="Huidige rating"
+          value={<AnimatedNumber value={current} />}
+          delta={<RatingDelta value={latest.ratingAfter - latest.ratingBefore} variant="inline" tone="court" forfeit={latest.isForfeit} />}
+          hint={
+            ladderEntry && ladder
+              ? `Positie ${ladderEntry.position} in de ladder, tier ${ladderEntry.tier}`
+              : undefined
+          }
+          className="col-span-2 lg:col-span-1"
+        />
+        <StatCard label="Hoogste" value={formatRating(peak)} hint={`Laagste ${formatRating(low)}`} />
+        <StatCard
+          label="Wedstrijden"
+          value={matchCount}
+          hint={forfeitCount > 0 ? `${forfeitCount} forfeit-penalty${forfeitCount === 1 ? "" : "'s"}` : "Geen forfeits"}
+        />
+      </div>
 
-      {history.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>Nog geen ratingwijzigingen.</p>}
+      <SectionCard
+        title="Verloop"
+        description={
+          ladder
+            ? `Stippellijnen markeren de tier-grenzen (elke ${ladder.tierSize} punten).`
+            : "Rating na elke wijziging."
+        }
+      >
+        <RatingChart data={series} tierSize={ladder?.tierSize} aspectRatio="16 / 9" />
+      </SectionCard>
 
-      {points.length >= 2 && (
-        <div className="card" style={{ borderRadius: 0, padding: 24, marginTop: 12 }}>
-          <RatingChart points={points} />
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div style={{ overflowX: "auto", marginTop: 16 }}>
-          <table className="table" style={{ minWidth: 600 }}>
-            <thead>
-              <tr>
-                <th>Datum</th>
-                <th>Tegen</th>
-                <th>Resultaat</th>
-                <th>Δ Rating</th>
-                <th></th>
+      <SectionCard
+        title="Alle wijzigingen"
+        description="Nieuwste bovenaan. Forfeits zijn vaste straffen, geen ELO-berekening."
+        flush
+        action={
+          <Button variant="soft" size="sm" asChild>
+            <Link href={`/duos/${duoId}/matches`}>
+              Wedstrijden
+              <ChevronRight aria-hidden />
+            </Link>
+          </Button>
+        }
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead className="max-md:sr-only">
+              <tr className="border-y bg-muted/50 text-left text-xs font-semibold text-muted-foreground">
+                <th scope="col" className="px-5 py-2.5 font-semibold">Datum</th>
+                <th scope="col" className="px-3 py-2.5 font-semibold">Tegen</th>
+                <th scope="col" className="px-3 py-2.5 font-semibold">Soort</th>
+                <th scope="col" className="px-5 py-2.5 text-right font-semibold">Wijziging</th>
               </tr>
             </thead>
             <tbody>
               {history.map((entry) => {
+                const kind = kindOf(entry);
+                const badge = KIND_BADGE[kind];
                 const delta = entry.ratingAfter - entry.ratingBefore;
-                const sign = delta >= 0 ? "+" : "";
                 return (
-                  <tr key={entry.id}>
-                    <td>{new Date(entry.createdAt).toLocaleDateString("nl-NL")}</td>
-                    <td>{entry.opponentName ?? "—"}</td>
-                    <td>{delta >= 0 ? "Winst" : "Verlies"}</td>
-                    <td style={{ color: delta >= 0 ? "var(--color-accent-700)" : "var(--color-text)", fontWeight: 700 }}>
-                      {sign}
-                      {delta}{" "}
-                      <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-neutral-600)" }}>
-                        ({entry.ratingBefore} → {entry.ratingAfter})
-                      </span>
+                  <tr
+                    key={entry.id}
+                    data-kind={kind}
+                    className={cn(
+                      "border-t first:border-t-0 md:first:border-t",
+                      "max-md:grid max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-1.5 max-md:px-4 max-md:py-3",
+                      kind !== "match" && "bg-[repeating-linear-gradient(135deg,transparent_0_8px,color-mix(in_oklab,var(--muted)_70%,transparent)_8px_9px)]",
+                    )}
+                  >
+                    <td className="text-xs whitespace-nowrap text-muted-foreground max-md:col-start-1 max-md:row-start-2 md:px-5 md:py-3 md:text-sm">
+                      <time dateTime={entry.createdAt}>{formatShortDate(entry.createdAt)}</time>
                     </td>
-                    <td>
-                      <span className={`tag ${entry.isForfeit ? "tag-accent" : "tag-neutral"}`}>
-                        {entry.isForfeit ? "Forfeit-penalty" : "Wedstrijdresultaat"}
-                      </span>
+                    <td className="min-w-0 truncate font-semibold max-md:col-span-2 max-md:col-start-1 max-md:row-start-1 md:px-3 md:py-3">
+                      {entry.opponentName ?? "—"}
+                    </td>
+                    <td className="max-md:col-start-2 max-md:row-start-2 md:px-3 md:py-3">
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </td>
+                    <td className="text-right max-md:col-start-3 max-md:row-span-2 max-md:row-start-1 md:px-5 md:py-3">
+                      <div className="flex flex-col items-end gap-1">
+                        <RatingDelta value={delta} forfeit={entry.isForfeit} size="md" />
+                        <span className="text-xs whitespace-nowrap text-muted-foreground tabular">
+                          {formatRating(entry.ratingBefore)} → {formatRating(entry.ratingAfter)}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -129,7 +248,7 @@ export function DuoRatingHistoryView({ duoId }: { duoId: string }) {
             </tbody>
           </table>
         </div>
-      )}
-    </>
+      </SectionCard>
+    </div>
   );
 }

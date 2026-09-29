@@ -1,378 +1,281 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Swords } from "lucide-react";
+import { m } from "motion/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiFetch, ApiError } from "@/lib/client/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { EmptyState } from "@/components/app/EmptyState";
+import { ListSkeleton } from "@/components/app/LoadingSkeletons";
+import { transition } from "@/components/app/motion";
+import { ChallengeCard, type ChallengeActions } from "@/components/matches/ChallengeCard";
+import {
+  type Challenge,
+  type ChallengeGroup,
+  GROUP_DESCRIPTIONS,
+  GROUP_LABELS,
+  GROUP_ORDER,
+  groupChallenges,
+} from "@/components/matches/challenges";
+import { getStoredUserId } from "@/components/matches/useOwnDuos";
+import { Button } from "@/components/ui/button";
+import { ApiError, apiFetch } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
+import { cn } from "@/lib/utils";
 
-type ChallengeDuo = { id: string; name: string };
-type DisputeSummary = { id: string; status: string };
-type MatchSummary = {
-  id: string;
-  status: string;
-  scoreRaw: string;
-  submittedBy: string;
-  dispute: DisputeSummary | null;
-};
-type Challenge = {
-  id: string;
-  status: string;
-  challengerDuoId: string;
-  challengedDuoId: string;
-  challengerDuo: ChallengeDuo;
-  challengedDuo: ChallengeDuo;
-  responseDeadline: string;
-  matchDeadline: string | null;
-  // Actieve (niet-voided) match; voided pogingen staan in voidedMatches.
-  match: MatchSummary | null;
-  voidedMatches: MatchSummary[];
-  dispute: DisputeSummary | null;
-};
+type Filter = "all" | ChallengeGroup;
 
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: "In afwachting",
-  ACCEPTED: "Geaccepteerd",
-  DECLINED: "Geweigerd",
-  EXPIRED: "Verlopen",
-  COMPLETED: "Voltooid",
-  UNPLAYED_TIMEOUT: "Niet gespeeld (forfeit)",
-};
-
-const MATCH_STATUS_LABELS: Record<string, string> = {
-  AWAITING_CONFIRMATION: "Wacht op bevestiging",
-  COMPLETED: "Bevestigd",
-  DISPUTED: "Betwist — wordt beoordeeld",
-  VOIDED: "Ongeldig verklaard",
-};
-
-type SetInput = { challengerGames: string; challengedGames: string };
-
-function ScoreForm({ challengeId, onSubmitted }: { challengeId: string; onSubmitted: () => void }) {
-  const [sets, setSets] = useState<SetInput[]>([
-    { challengerGames: "", challengedGames: "" },
-    { challengerGames: "", challengedGames: "" },
-  ]);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  function updateSet(index: number, field: keyof SetInput, value: string) {
-    setSets((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const parsedSets = sets.map((s) => ({
-        challengerGames: Number(s.challengerGames),
-        challengedGames: Number(s.challengedGames),
-      }));
-      await apiFetch(`/api/challenges/${challengeId}/score`, {
-        method: "POST",
-        body: JSON.stringify({ sets: parsedSets, idempotencyKey: crypto.randomUUID() }),
-      });
-      onSubmitted();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Er is iets misgegaan.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} style={{ marginTop: 16, maxWidth: 420 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          gap: 12,
-          alignItems: "center",
-          marginBottom: 8,
-          fontFamily: "var(--font-heading)",
-          fontWeight: 800,
-          fontSize: 12,
-          textTransform: "uppercase",
-        }}
-      >
-        <div>Uitdager</div>
-        <div />
-        <div style={{ textAlign: "right" }}>Uitgedaagde</div>
-      </div>
-      {sets.map((set, i) => (
-        <div
-          key={i}
-          style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", marginBottom: 12 }}
-        >
-          <input
-            className="input"
-            type="number"
-            min={0}
-            required
-            value={set.challengerGames}
-            onChange={(e) => updateSet(i, "challengerGames", e.target.value)}
-            placeholder="0"
-          />
-          <div style={{ fontSize: 12, color: "var(--color-neutral-700)", textAlign: "center" }}>set {i + 1}</div>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            required
-            value={set.challengedGames}
-            onChange={(e) => updateSet(i, "challengedGames", e.target.value)}
-            placeholder="0"
-          />
-        </div>
-      ))}
-      <div className="flex gap-2" style={{ marginBottom: 8 }}>
-        {sets.length < 3 && (
-          <button
-            type="button"
-            onClick={() => setSets((prev) => [...prev, { challengerGames: "", challengedGames: "" }])}
-            className="btn btn-secondary"
-            style={{ fontSize: 11 }}
-          >
-            + 3e set
-          </button>
-        )}
-        {sets.length > 2 && (
-          <button
-            type="button"
-            onClick={() => setSets((prev) => prev.slice(0, -1))}
-            className="btn btn-secondary"
-            style={{ fontSize: 11 }}
-          >
-            − 3e set
-          </button>
-        )}
-      </div>
-      {error && <p style={{ color: "var(--color-accent-700)" }}>{error}</p>}
-      <button type="submit" disabled={submitting} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-        Score indienen
-      </button>
-    </form>
-  );
-}
-
-function DisputeForm({
-  submitPath,
-  onSubmitted,
-}: {
-  submitPath: string;
-  onSubmitted: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await apiFetch(submitPath, { method: "POST", body: JSON.stringify({ reason }) });
-      onSubmitted();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Er is iets misgegaan.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2" style={{ marginTop: 8, fontSize: 13 }}>
-      <textarea
-        className="input"
-        required
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Waarom betwist je dit?"
-      />
-      {error && <p style={{ color: "var(--color-accent-700)" }}>{error}</p>}
-      <button type="submit" disabled={submitting} className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
-        Dispute openen
-      </button>
-    </form>
-  );
-}
-
-export function DuoChallengesView({ duoId }: { duoId: string }) {
+/**
+ * Alle challenges van één duo, ingedeeld in inkomend / te spelen / uitslag /
+ * uitgaand / afgerond, met een filterbalk (tabs) erboven. "Alles" (standaard)
+ * toont alle groepen onder elkaar, zodat een kaart na een actie zichtbaar
+ * naar de volgende groep verhuist.
+ */
+export function DuoChallengesView({ duoId, duoName }: { duoId: string; duoName?: string }) {
   const router = useRouter();
   const [challenges, setChallenges] = useState<Challenge[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [matchError, setMatchError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const requestRef = useRef(0);
 
-  function reload() {
+  const reload = useCallback(() => {
+    const request = ++requestRef.current;
     apiFetch<Challenge[]>(`/api/duos/${duoId}/challenges`)
-      .then(setChallenges)
+      .then((data) => {
+        if (request !== requestRef.current) return;
+        setChallenges(data);
+        setLoadError(null);
+      })
       .catch((err) => {
+        if (request !== requestRef.current) return;
         if (err instanceof ApiError && err.status === 401) {
           router.push("/login");
           return;
         }
-        setError("Kon de challenges niet laden.");
+        setLoadError(err instanceof ApiError && err.status === 403 ? err.message : "Kon de challenges niet laden.");
       });
-  }
+  }, [duoId, router]);
 
   useEffect(() => {
     if (!getStoredToken()) {
       router.push("/login");
       return;
     }
+    setMyUserId(getStoredUserId());
     setChallenges(null);
+    setLoadError(null);
+    setFilter("all");
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [duoId, router]);
+  }, [reload, router]);
 
-  async function respond(challengeId: string, decision: "accept" | "decline") {
-    setBusyId(challengeId);
-    try {
-      await apiFetch(`/api/challenges/${challengeId}/respond`, {
-        method: "POST",
-        body: JSON.stringify({ decision }),
-      });
-      reload();
-    } finally {
-      setBusyId(null);
-    }
+  const groups = useMemo(() => (challenges ? groupChallenges(challenges, duoId) : null), [challenges, duoId]);
+
+  const ownName = useMemo(() => {
+    if (duoName) return duoName;
+    const any = challenges?.[0];
+    if (!any) return "Jullie";
+    return any.challengerDuoId === duoId ? any.challengerDuo.name : any.challengedDuo.name;
+  }, [challenges, duoId, duoName]);
+
+  // Een filter waarvan de groep leeg raakt (kaart verhuisd na een actie) → terug naar "Alles".
+  useEffect(() => {
+    if (groups && filter !== "all" && groups[filter].length === 0) setFilter("all");
+  }, [groups, filter]);
+
+  const actions: ChallengeActions = useMemo(
+    () => ({
+      reload,
+      respond: async (challengeId, decision) => {
+        setBusyId(challengeId);
+        setActionError(null);
+        try {
+          await apiFetch(`/api/challenges/${challengeId}/respond`, {
+            method: "POST",
+            body: JSON.stringify({ decision }),
+          });
+          toast.success(decision === "accept" ? "Uitdaging aangenomen" : "Uitdaging afgewezen");
+          reload();
+        } catch (err) {
+          setActionError(err instanceof ApiError ? err.message : "Er is iets misgegaan. Probeer het opnieuw.");
+        } finally {
+          setBusyId(null);
+        }
+      },
+      respondToMatch: async (matchId, decision) => {
+        setBusyId(matchId);
+        setActionError(null);
+        try {
+          await apiFetch(`/api/matches/${matchId}/respond`, {
+            method: "POST",
+            body: JSON.stringify({ decision }),
+          });
+          toast.success(decision === "confirm" ? "Uitslag goedgekeurd" : "Leg nu uit wat er niet klopt");
+          reload();
+        } catch (err) {
+          setActionError(err instanceof ApiError ? err.message : "Er is iets misgegaan. Probeer het opnieuw.");
+        } finally {
+          setBusyId(null);
+        }
+      },
+    }),
+    [reload],
+  );
+
+  if (loadError) {
+    return (
+      <div role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">
+        <p>{loadError}</p>
+        <Button type="button" size="sm" variant="outline" onClick={reload}>
+          Opnieuw proberen
+        </Button>
+      </div>
+    );
   }
 
-  async function respondToMatch(matchId: string, decision: "confirm" | "dispute") {
-    setBusyId(matchId);
-    setMatchError(null);
-    try {
-      await apiFetch(`/api/matches/${matchId}/respond`, {
-        method: "POST",
-        body: JSON.stringify({ decision }),
-      });
-      reload();
-    } catch (err) {
-      setMatchError(err instanceof ApiError ? err.message : "Er is iets misgegaan.");
-    } finally {
-      setBusyId(null);
-    }
+  if (!challenges || !groups) {
+    return <ListSkeleton rows={4} label="Challenges laden…" />;
   }
 
-  if (error) {
-    return <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{error}</p>;
+  if (challenges.length === 0) {
+    return (
+      <EmptyState
+        icon={Swords}
+        title="Nog geen challenges"
+        description="Daag een duo uit dat in dezelfde rank-tier staat. Dat doe je vanaf de ladder."
+        action={
+          <Button asChild>
+            <Link href="/ladder">Naar de ladder</Link>
+          </Button>
+        }
+      />
+    );
   }
-  if (!challenges) {
-    return <p className="text-sm">Laden...</p>;
+
+  const visibleGroups = GROUP_ORDER.filter((g) => groups[g].length > 0 && (filter === "all" || filter === g));
+  const tabs: { value: Filter; label: string; count: number }[] = [
+    { value: "all", label: "Alles", count: challenges.length },
+    ...GROUP_ORDER.filter((g) => groups[g].length > 0).map((g) => ({
+      value: g,
+      label: GROUP_LABELS[g],
+      count: groups[g].length,
+    })),
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <FilterTabs tabs={tabs} value={filter} onChange={setFilter} controls={`challenges-${duoId}`} />
+
+      {actionError ? (
+        <div role="alert" className="rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">
+          {actionError}
+        </div>
+      ) : null}
+
+      <div id={`challenges-${duoId}`} role="tabpanel" aria-label={filter === "all" ? "Alle challenges" : GROUP_LABELS[filter]} className="flex flex-col gap-8">
+        {visibleGroups.map((group) => (
+          <section key={group} aria-labelledby={`group-${group}`} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h2 id={`group-${group}`} className="flex items-baseline gap-2 font-display text-[1.375rem] leading-tight font-bold">
+                {GROUP_LABELS[group]}
+                <span className="font-score text-lg text-muted-foreground">{groups[group].length}</span>
+              </h2>
+              <p className="text-sm text-muted-foreground">{GROUP_DESCRIPTIONS[group]}</p>
+            </div>
+            <ul className="flex flex-col gap-3">
+              {groups[group].map((challenge) => (
+                <ChallengeCard
+                  key={challenge.id}
+                  challenge={challenge}
+                  group={group}
+                  duoId={duoId}
+                  ownName={ownName}
+                  myUserId={myUserId}
+                  busyId={busyId}
+                  actions={actions}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Filterbalk als tablist; horizontaal scrollbaar op mobiel, pijltjestoetsen wisselen. */
+function FilterTabs({
+  tabs,
+  value,
+  onChange,
+  controls,
+}: {
+  tabs: { value: Filter; label: string; count: number }[];
+  value: Filter;
+  onChange: (value: Filter) => void;
+  controls: string;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function onKeyDown(e: React.KeyboardEvent, index: number) {
+    let next = -1;
+    if (e.key === "ArrowRight") next = (index + 1) % tabs.length;
+    if (e.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+    if (e.key === "Home") next = 0;
+    if (e.key === "End") next = tabs.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    onChange(tabs[next].value);
+    refs.current[next]?.focus();
   }
 
   return (
-    <>
-      {challenges.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>Nog geen challenges.</p>}
-
-      {matchError && <p style={{ fontSize: 13, color: "var(--color-accent-700)" }}>{matchError}</p>}
-
-      <ul>
-        {challenges.map((c) => {
-          const isChallengedDuo = c.challengedDuoId === duoId;
-          const opponent = isChallengedDuo ? c.challengerDuo : c.challengedDuo;
-          const canRespond = isChallengedDuo && c.status === "PENDING";
-          const canSubmitScore = c.status === "ACCEPTED" && !c.match;
-          const matchAwaitingConfirmation = c.match?.status === "AWAITING_CONFIRMATION";
-          const canOpenMatchDispute = c.match?.status === "DISPUTED" && !c.match.dispute;
-          const canOpenForfeitDispute = c.status === "UNPLAYED_TIMEOUT" && !c.dispute;
-          const statusTagClass = c.status === "PENDING" || matchAwaitingConfirmation ? "tag-accent" : "tag-outline";
-
+    <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
+      <div role="tablist" aria-label="Filter challenges" className="flex w-max gap-1 rounded-full border bg-card p-1 shadow-card">
+        {tabs.map((tab, index) => {
+          const active = tab.value === value;
           return (
-            <li
-              key={c.id}
-              style={{
-                padding: "16px 0",
-                borderBottom: "2px solid var(--color-divider)",
+            <button
+              key={tab.value}
+              ref={(el) => {
+                refs.current[index] = el;
               }}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={controls}
+              tabIndex={active ? 0 : -1}
+              onClick={() => onChange(tab.value)}
+              onKeyDown={(e) => onKeyDown(e, index)}
+              className={cn(
+                "relative flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p style={{ fontWeight: 700, margin: 0 }}>vs. {opponent.name}</p>
-                  <p style={{ color: "var(--color-neutral-700)", margin: 0, fontSize: 13 }}>
-                    {c.status === "PENDING" &&
-                      `Deadline: ${new Date(c.responseDeadline).toLocaleDateString("nl-NL")}`}
-                    {c.status === "ACCEPTED" &&
-                      c.matchDeadline &&
-                      `Deadline: ${new Date(c.matchDeadline).toLocaleDateString("nl-NL")}`}
-                    {c.match && `score ${c.match.scoreRaw} · ${MATCH_STATUS_LABELS[c.match.status] ?? c.match.status}`}
-                    {" · "}
-                    {isChallengedDuo ? "Inkomend" : "Uitgaand"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`tag ${statusTagClass}`}>{STATUS_LABELS[c.status] ?? c.status}</span>
-                  {canRespond && (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={busyId === c.id}
-                        onClick={() => respond(c.id, "accept")}
-                        className="btn btn-primary"
-                      >
-                        Accepteren
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === c.id}
-                        onClick={() => respond(c.id, "decline")}
-                        className="btn btn-secondary"
-                      >
-                        Weigeren
-                      </button>
-                    </div>
-                  )}
-                  {matchAwaitingConfirmation && (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={busyId === c.match!.id}
-                        onClick={() => respondToMatch(c.match!.id, "confirm")}
-                        className="btn btn-primary"
-                      >
-                        Bevestigen
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === c.match!.id}
-                        onClick={() => respondToMatch(c.match!.id, "dispute")}
-                        className="btn btn-secondary"
-                      >
-                        Betwisten
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {canSubmitScore && c.voidedMatches.length > 0 && (
-                <p className="text-muted" style={{ fontSize: 13 }}>
-                  Eerdere score ({c.voidedMatches[0].scoreRaw}) is ongeldig verklaard door een admin — speel
-                  opnieuw en dien een nieuwe score in.
-                </p>
-              )}
-              {canSubmitScore && <ScoreForm challengeId={c.id} onSubmitted={reload} />}
-              {canOpenMatchDispute && (
-                <DisputeForm submitPath={`/api/matches/${c.match!.id}/disputes`} onSubmitted={reload} />
-              )}
-              {c.match?.dispute && (
-                <p className="text-muted" style={{ fontSize: 13 }}>
-                  Dispute geopend — wordt beoordeeld door een admin.
-                </p>
-              )}
-              {canOpenForfeitDispute && (
-                <DisputeForm submitPath={`/api/challenges/${c.id}/disputes`} onSubmitted={reload} />
-              )}
-              {c.dispute && (
-                <p className="text-muted" style={{ fontSize: 13 }}>
-                  Forfeit-dispute geopend — wordt beoordeeld door een admin.
-                </p>
-              )}
-            </li>
+              {active ? (
+                <m.span
+                  layoutId="challenge-filter-pill"
+                  transition={transition.spring}
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-primary"
+                />
+              ) : null}
+              <span className="relative">{tab.label}</span>
+              <span
+                className={cn(
+                  "relative min-w-5 rounded-full px-1.5 text-center font-score text-sm leading-5 tabular",
+                  active ? "bg-white/20" : "bg-muted",
+                )}
+              >
+                {tab.count}
+              </span>
+            </button>
           );
         })}
-      </ul>
-    </>
+      </div>
+    </div>
   );
 }
