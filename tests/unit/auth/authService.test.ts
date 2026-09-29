@@ -80,6 +80,17 @@ describe("register", () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
   });
 
+  it("slaat een meegegeven weergavenaam op (anders null)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.user.create.mockResolvedValue({ id: "user-1", email: "nieuw@example.com" });
+
+    await register("nieuw@example.com", "Wachtwoord1", "Jan de Vries");
+    await register("nieuw2@example.com", "Wachtwoord1");
+
+    expect(mockPrisma.user.create.mock.calls[0][0].data.displayName).toBe("Jan de Vries");
+    expect(mockPrisma.user.create.mock.calls[1][0].data.displayName).toBeNull();
+  });
+
   it("geeft emailSent: true terug bij een geslaagde verzending", async () => {
     mockPrisma.user.findUnique.mockResolvedValueOnce(null);
     mockPrisma.user.create.mockResolvedValueOnce({ id: "user-1", email: "nieuw@example.com" });

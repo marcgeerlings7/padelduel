@@ -1,17 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useHydrated } from "@/lib/client/useHydrated";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Check, CircleAlert, Loader2, MailCheck, MailWarning } from "lucide-react";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
 function isPasswordComplexEnough(password: string): boolean {
   return password.length >= 10 && PASSWORD_PATTERN.test(password);
+}
+
+/** Losse eisen, alleen voor de visuele checklist (de echte check blijft isPasswordComplexEnough). */
+const REQUIREMENTS: { label: string; test: (pw: string) => boolean }[] = [
+  { label: "10+ tekens", test: (pw) => pw.length >= 10 },
+  { label: "Hoofdletter", test: (pw) => /[A-Z]/.test(pw) },
+  { label: "Kleine letter", test: (pw) => /[a-z]/.test(pw) },
+  { label: "Cijfer", test: (pw) => /\d/.test(pw) },
+];
+
+function ErrorBox({ id, children }: { id?: string; children: React.ReactNode }) {
+  return (
+    <div
+      id={id}
+      role="alert"
+      className="flex items-start gap-2 rounded-lg border border-loss/30 bg-loss-soft px-3 py-2.5 text-sm text-loss"
+    >
+      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <span>{children}</span>
+    </div>
+  );
 }
 
 export default function RegisterPage() {
@@ -27,7 +54,9 @@ export default function RegisterPage() {
   // verstuurd kon worden (API: emailSent === false).
   const [emailWarning, setEmailWarning] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [resendFailed, setResendFailed] = useState(false);
   const [resending, setResending] = useState(false);
+  const id = useId();
 
   useEffect(() => {
     if (getStoredToken()) {
@@ -38,6 +67,7 @@ export default function RegisterPage() {
   const passwordTouched = password.length > 0;
   const passwordValid = isPasswordComplexEnough(password);
   const passwordsMatch = password === confirmPassword;
+  const showMismatch = confirmPassword.length > 0 && !passwordsMatch;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +104,7 @@ export default function RegisterPage() {
     if (!registeredEmail) return;
     setResending(true);
     setResendMessage(null);
+    setResendFailed(false);
     try {
       const result = await apiFetch<{ message: string }>("/api/auth/resend-activation", {
         method: "POST",
@@ -81,6 +112,7 @@ export default function RegisterPage() {
       });
       setResendMessage(result.message);
     } catch {
+      setResendFailed(true);
       setResendMessage("Er is iets misgegaan bij het opnieuw versturen.");
     } finally {
       setResending(false);
@@ -90,109 +122,160 @@ export default function RegisterPage() {
   if (registeredEmail) {
     return (
       <AuthLayout>
-        <div className="tag tag-accent" style={{ marginBottom: 10 }}>
-          Bijna klaar
+        <header className="flex flex-col gap-4">
+          <span
+            className={cn(
+              "flex size-14 items-center justify-center rounded-2xl",
+              emailWarning ? "bg-warning-soft text-warning" : "bg-primary-soft text-primary",
+            )}
+          >
+            {emailWarning ? <MailWarning aria-hidden className="size-7" /> : <MailCheck aria-hidden className="size-7" />}
+          </span>
+          <h1 className="font-display text-[2.5rem] leading-[0.95] font-bold tracking-tight">Controleer je e-mail</h1>
+          {emailWarning ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-sm text-warning"
+            >
+              {emailWarning}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              We hebben een activatielink gestuurd naar{" "}
+              <strong className="font-semibold break-all text-foreground">{registeredEmail}</strong>. Klik op de link om
+              je account te activeren; daarna kun je inloggen.
+            </p>
+          )}
+        </header>
+
+        <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-card">
+          <p className="text-sm text-muted-foreground">
+            {emailWarning
+              ? "Vraag hieronder een nieuwe activatielink aan."
+              : "Geen e-mail gekregen? Kijk in je spammap of vraag een nieuwe link aan."}
+          </p>
+          <Button type="button" variant="outline" disabled={resending} onClick={handleResend} className="w-full">
+            {resending ? (
+              <>
+                <Loader2 aria-hidden className="animate-spin" />
+                Bezig…
+              </>
+            ) : (
+              "Activatielink opnieuw versturen"
+            )}
+          </Button>
+          <p aria-live="polite" className={cn("text-sm empty:hidden", resendFailed ? "text-loss" : "text-foreground")}>
+            {resendMessage}
+          </p>
         </div>
-        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 12px" }}>
-          Controleer je e-mail
-        </h1>
-        {!emailWarning && (
-          <p style={{ margin: "0 0 8px", color: "var(--color-neutral-700)", fontSize: 14, lineHeight: 1.6 }}>
-            We hebben een activatielink gestuurd naar <strong>{registeredEmail}</strong>. Klik op de link
-            om je account te activeren — daarna kun je inloggen.
-          </p>
-        )}
-        {emailWarning && (
-          <p role="alert" style={{ margin: "0 0 8px", color: "var(--color-accent-700)", fontSize: 13 }}>
-            {emailWarning}
-          </p>
-        )}
-        <p style={{ margin: "0 0 24px", color: "var(--color-neutral-600)", fontSize: 13 }}>
-          Geen e-mail gekregen? Controleer je spam-map, of vraag hieronder een nieuwe link aan.
-        </p>
-        <button type="button" disabled={resending} onClick={handleResend} className="btn btn-secondary">
-          {resending ? "Bezig..." : "Activatielink opnieuw versturen"}
-        </button>
-        {resendMessage && (
-          <p style={{ marginTop: 12, fontSize: 13, color: "var(--color-text)" }}>{resendMessage}</p>
-        )}
-        <div className="hr" style={{ margin: "28px 0" }} />
-        <Link href="/login" className="btn btn-primary btn-block">
-          Naar inloggen
-        </Link>
+
+        <Button asChild size="lg" className="w-full no-underline">
+          <Link href="/login">Naar inloggen</Link>
+        </Button>
       </AuthLayout>
     );
   }
 
   return (
     <AuthLayout>
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: 28, margin: "0 0 8px" }}>
-        Account aanmaken
-      </h1>
-      <p style={{ margin: "0 0 28px", color: "var(--color-neutral-700)", fontSize: 14 }}>
-        Heb je al een account? <Link href="/login">Inloggen</Link>.
-      </p>
-      <form onSubmit={handleSubmit}>
-        <div className="field" style={{ marginBottom: 16 }}>
-          <label>E-mailadres</label>
-          <input
-            className="input"
+      <header className="flex flex-col gap-2">
+        <h1 className="font-display text-[2.5rem] leading-[0.95] font-bold tracking-tight">Account aanmaken</h1>
+        <p className="text-muted-foreground">
+          Heb je al een account?{" "}
+          <Link href="/login" className="font-semibold text-primary underline-offset-4 hover:underline">
+            Inloggen
+          </Link>
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-email`}>E-mailadres</Label>
+          <Input
+            id={`${id}-email`}
             type="email"
+            name="email"
+            autoComplete="email"
+            inputMode="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="jij@padel.nl"
+            placeholder="jij@voorbeeld.nl"
           />
         </div>
-        <div className="field" style={{ marginBottom: 8 }}>
-          <label>Wachtwoord</label>
-          <input
-            className="input"
-            type="password"
+
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-password`}>Wachtwoord</Label>
+          <PasswordInput
+            id={`${id}-password`}
+            name="new-password"
+            autoComplete="new-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••••"
+            aria-describedby={`${id}-password-hint`}
+            aria-invalid={passwordTouched && !passwordValid && error ? true : undefined}
           />
+          <p
+            id={`${id}-password-hint`}
+            className={cn("text-xs", passwordTouched && !passwordValid ? "text-loss" : "text-muted-foreground")}
+          >
+            Minimaal 10 tekens, met een hoofdletter, kleine letter en een cijfer.
+          </p>
+          <ul aria-hidden className="flex flex-wrap gap-1.5">
+            {REQUIREMENTS.map((req) => {
+              const met = req.test(password);
+              return (
+                <li
+                  key={req.label}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors",
+                    met ? "bg-win-soft text-win" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <Check className={cn("size-3", met ? "opacity-100" : "opacity-30")} strokeWidth={3} />
+                  {req.label}
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <p
-          style={{
-            margin: "0 0 16px",
-            fontSize: 12,
-            color: passwordTouched && !passwordValid ? "var(--color-accent-700)" : "var(--color-neutral-600)",
-          }}
-        >
-          Minimaal 10 tekens, met een hoofdletter, kleine letter en een cijfer.
-        </p>
-        <div className="field" style={{ marginBottom: 8 }}>
-          <label>Wachtwoord bevestigen</label>
-          <input
-            className="input"
-            type="password"
+
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-confirm`}>Wachtwoord bevestigen</Label>
+          <PasswordInput
+            id={`${id}-confirm`}
+            name="confirm-password"
+            autoComplete="new-password"
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="••••••••••"
+            aria-invalid={showMismatch ? true : undefined}
+            aria-describedby={showMismatch ? `${id}-mismatch` : undefined}
           />
+          {showMismatch ? (
+            <p id={`${id}-mismatch`} className="text-xs text-loss">
+              De wachtwoorden komen niet overeen.
+            </p>
+          ) : null}
         </div>
-        {confirmPassword.length > 0 && !passwordsMatch && (
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--color-accent-700)" }}>
-            De wachtwoorden komen niet overeen.
-          </p>
-        )}
-        {error && (
-          <p style={{ color: "var(--color-accent-700)", fontSize: 13, marginTop: 8, marginBottom: 16 }}>{error}</p>
-        )}
-        <button type="submit" disabled={submitting || !hydrated} className="btn btn-primary btn-block" style={{ marginTop: 16 }}>
-          {submitting ? "Bezig..." : "Account aanmaken"}
-        </button>
-      </form>
 
-      <div className="hr" style={{ margin: "28px 0" }} />
-      <div className="flex flex-wrap gap-2">
-        <span className="tag tag-neutral">Multi-duo ondersteund</span>
-        <span className="tag tag-outline">ELO-rating</span>
-      </div>
+        {error ? <ErrorBox>{error}</ErrorBox> : null}
+
+        <Button type="submit" size="lg" disabled={submitting || !hydrated} className="mt-1 w-full">
+          {submitting ? (
+            <>
+              <Loader2 aria-hidden className="animate-spin" />
+              Bezig…
+            </>
+          ) : (
+            "Account aanmaken"
+          )}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Na het aanmaken krijg je een e-mail met een activatielink. Daarna kun je inloggen en een duo vormen.
+        </p>
+      </form>
     </AuthLayout>
   );
 }

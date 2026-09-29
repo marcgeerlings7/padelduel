@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getTier, applyForfeitPenalty } from "@/lib/elo";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { notifyChallengeReceived, notifySafely } from "@/server/services/notificationService";
 
 export class ChallengeError extends Error {
   constructor(
@@ -135,6 +136,8 @@ export async function proposeChallenge(
     },
   });
 
+  // Ná de commit; een mislukte mail breekt het uitdagen nooit.
+  await notifySafely("nieuwe uitdaging", () => notifyChallengeReceived(challenge.id));
   return { id: challenge.id };
 }
 
@@ -238,20 +241,47 @@ export async function expireOverdueChallenges(): Promise<ExpireResult[]> {
 }
 
 /**
+ * Duo-velden die aan BEIDE partijen van een challenge getoond mogen
+ * worden. Bewust geen volledige duo-rij: die bevat o.a. member_pair_key
+ * (= de user-id's van de leden) en dissolution_requested_by_user_id, die
+ * de tegenstander niet hoeft te zien (KNLTB-aanvullingen, privacy-audit).
+ */
+const PUBLIC_DUO_SELECT = {
+  select: { id: true, name: true, regionId: true, currentRating: true, isActive: true, category: true },
+} as const;
+
+/**
  * Post-v1: een challenge kan meerdere matches hebben (replay na een
  * overturned dispute). De response behoudt het bestaande `match`-veld
  * (de actieve, niet-voided match, of null) zodat clients niet hoeven te
  * weten dat het intern 1:n is; `voidedMatches` bevat de ongeldig
  * verklaarde eerdere pogingen (nieuwste eerst) voor weergave/audit.
+ *
+ * KNLTB-aanvullingen: matches bevatten nu ook resultType/concedingSide/
+ * playedScoreRaw, en `postponements` (nieuwste eerst) de uitstelverzoeken.
  */
 export async function listChallengesForDuo(duoId: string) {
   const challenges = await prisma.challenge.findMany({
     where: { OR: [{ challengerDuoId: duoId }, { challengedDuoId: duoId }] },
     include: {
-      challengerDuo: true,
-      challengedDuo: true,
+      challengerDuo: PUBLIC_DUO_SELECT,
+      challengedDuo: PUBLIC_DUO_SELECT,
       matches: { include: { dispute: true }, orderBy: { submittedAt: "desc" } },
       dispute: true,
+      postponements: {
+        select: {
+          id: true,
+          requestedByDuoId: true,
+          requestedDays: true,
+          reason: true,
+          status: true,
+          previousMatchDeadline: true,
+          newMatchDeadline: true,
+          createdAt: true,
+          respondedAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

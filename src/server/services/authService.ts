@@ -43,7 +43,11 @@ export type RegisterResult = {
   emailSent: boolean;
 };
 
-export async function register(email: string, password: string): Promise<RegisterResult> {
+export async function register(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<RegisterResult> {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     // Generieke melding (US-A1): onthult niet of het account al bestaat.
@@ -52,7 +56,7 @@ export async function register(email: string, password: string): Promise<Registe
 
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
-    data: { email, passwordHash, isActive: false },
+    data: { email, passwordHash, isActive: false, displayName: displayName ?? null },
   });
 
   const token = await signActivationToken(user.id);

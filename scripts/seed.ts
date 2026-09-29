@@ -70,6 +70,32 @@ const DUO_MEMBERS: [number, number][] = [
   [5, 7],
 ];
 
+// KNLTB-aanvullingen: publieke weergavenamen voor de demo-spelers (nooit
+// het e-mailadres tonen). Speler 20 heeft bewust GEEN naam, zodat de
+// neutrale fallback ("Speler XXXXXX") ook in de demo zichtbaar is.
+const DISPLAY_NAMES: Array<string | null> = [
+  "Anna de Vries",
+  "Bram Jansen",
+  "Chantal Bakker",
+  "Daan Visser",
+  "Eva Smit",
+  "Finn de Boer",
+  "Gwen Mulder",
+  "Hugo de Groot",
+  "Iris Bos",
+  "Jesse Vos",
+  "Kim Peters",
+  "Lars Hendriks",
+  "Mila van Dijk",
+  "Noah Dekker",
+  "Olivia Brouwer",
+  "Pim de Wit",
+  "Quinty Dijkstra",
+  "Ruben Smits",
+  "Sanne de Graaf",
+  null,
+];
+
 function memberPairKey(userIdA: string, userIdB: string): string {
   return [userIdA, userIdB].sort().join("::");
 }
@@ -86,10 +112,11 @@ async function main() {
   for (let n = 1; n <= 20; n++) {
     await prisma.user.upsert({
       where: { id: userId(n) },
-      update: {},
+      update: { displayName: DISPLAY_NAMES[n - 1] },
       create: {
         id: userId(n),
         email: `user${n}@example.com`,
+        displayName: DISPLAY_NAMES[n - 1],
         passwordHash,
         role: "USER",
         isActive: true,
@@ -102,10 +129,11 @@ async function main() {
   // kunnen testen/demonstreren; geen onderdeel van de reguliere 20 spelers.
   await prisma.user.upsert({
     where: { id: ADMIN_ID },
-    update: {},
+    update: { displayName: "Ladder Admin" },
     create: {
       id: ADMIN_ID,
       email: "admin@example.com",
+      displayName: "Ladder Admin",
       passwordHash,
       role: "ADMIN",
       isActive: true,

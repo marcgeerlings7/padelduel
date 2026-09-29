@@ -42,3 +42,6 @@ next-env.d.ts
 
 # graphify (afgeleid, lokaal opnieuw op te bouwen met `graphify update .`)
 /graphify-out/
+
+# Agent-worktrees van Claude Code
+/.claude/worktrees/

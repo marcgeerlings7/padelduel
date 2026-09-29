@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
 import { finalizeMatch } from "@/server/services/matchService";
+import { notifyDisputeResolved, notifySafely } from "@/server/services/notificationService";
 
 export class DisputeError extends Error {
   constructor(
@@ -116,7 +117,9 @@ export async function listOpenDisputes() {
     include: {
       match: { include: { challenge: { include: { challengerDuo: true, challengedDuo: true } } } },
       challenge: { include: { challengerDuo: true, challengedDuo: true } },
-      raisedByUser: { select: { id: true, email: true } },
+      // Admin-only endpoint: e-mail blijft beschikbaar voor contact,
+      // displayName is erbij gekomen voor weergave.
+      raisedByUser: { select: { id: true, email: true, displayName: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -163,6 +166,7 @@ export async function resolveMatchScoreDispute(
 
   if (resolution === "overturned") {
     await overturnMatchScoreDispute(disputeId, matchId, adminUserId, notes);
+    await notifySafely("geschil afgehandeld", () => notifyDisputeResolved(disputeId));
     return;
   }
 
@@ -185,6 +189,7 @@ export async function resolveMatchScoreDispute(
     matchId,
     notes,
   });
+  await notifySafely("geschil afgehandeld", () => notifyDisputeResolved(disputeId));
 }
 
 /**
@@ -332,4 +337,5 @@ export async function resolveForfeitDispute(
     atFaultDuoId: resolution === "overturned" ? atFaultDuoId : undefined,
     notes,
   });
+  await notifySafely("geschil afgehandeld", () => notifyDisputeResolved(disputeId));
 }
