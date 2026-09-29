@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Trophy,
   UserCog,
+  UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/challenges", label: "Challenges", icon: Swords },
   { href: "/rating-history", label: "Rating", icon: TrendingUp },
   { href: "/availability", label: "Beschikbaarheid", icon: CalendarClock },
+  { href: "/profile", label: "Profiel", icon: UserRound },
   { href: "/info", label: "Uitleg", icon: CircleHelp },
 ];
 

@@ -6,11 +6,11 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { DuoRatingHistoryView } from "@/components/duo/DuoRatingHistoryView";
 import { DuoMeta } from "@/components/matches/DuoMeta";
 import { DuoSectionNav } from "@/components/matches/DuoSectionNav";
-import { useOwnDuos } from "@/components/matches/useOwnDuos";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 
 export default function DuoRatingHistoryPage() {
   const params = useParams<{ id: string }>();
-  const { duos } = useOwnDuos();
+  const { duos } = useMyDuos();
   const duo = duos?.find((d) => d.id === params.id) ?? null;
   const own = duos === null || duo !== null;
 
@@ -23,7 +23,7 @@ export default function DuoRatingHistoryPage() {
       />
       <div className="flex flex-col gap-5">
         <DuoSectionNav duoId={params.id} current="rating-history" own={own} />
-        <DuoRatingHistoryView duoId={params.id} regionSlug={duo?.region.slug} />
+        <DuoRatingHistoryView duoId={params.id} duo={duo} />
       </div>
     </Page>
   );

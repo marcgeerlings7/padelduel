@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DuoCard, type HistoryState } from "@/components/dashboard/DuoCard";
 import { InvitationsPanel } from "@/components/dashboard/InvitationsPanel";
+import { DisplayNameBanner } from "@/components/profile/DisplayNameBanner";
 import type { DashboardData, InvitationsData, RatingHistoryRow } from "@/components/dashboard/types";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
@@ -84,6 +85,8 @@ export default function DashboardPage() {
           ) : undefined
         }
       />
+
+      <DisplayNameBanner />
 
       {error ? (
         <div role="alert" className="rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">

@@ -18,7 +18,6 @@ import {
   GROUP_ORDER,
   groupChallenges,
 } from "@/components/matches/challenges";
-import { getStoredUserId } from "@/components/matches/useOwnDuos";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
@@ -39,7 +38,6 @@ export function DuoChallengesView({ duoId, duoName }: { duoId: string; duoName?:
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [myUserId, setMyUserId] = useState<string | null>(null);
   const requestRef = useRef(0);
 
   const reload = useCallback(() => {
@@ -65,7 +63,6 @@ export function DuoChallengesView({ duoId, duoName }: { duoId: string; duoName?:
       router.push("/login");
       return;
     }
-    setMyUserId(getStoredUserId());
     setChallenges(null);
     setLoadError(null);
     setFilter("all");
@@ -193,7 +190,6 @@ export function DuoChallengesView({ duoId, duoName }: { duoId: string; duoName?:
                   group={group}
                   duoId={duoId}
                   ownName={ownName}
-                  myUserId={myUserId}
                   busyId={busyId}
                   actions={actions}
                 />

@@ -37,7 +37,10 @@ vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
 }));
 
-const { proposeDuo, respondToInvitation, dissolveDuo, DuoError } = await import(
+const mockGetLadderPositions = vi.fn();
+vi.mock("@/server/services/ladderService", () => ({ getLadderPositions: mockGetLadderPositions }));
+
+const { proposeDuo, respondToInvitation, dissolveDuo, listMyDuos, DuoError } = await import(
   "@/server/services/duoService"
 );
 
@@ -334,5 +337,31 @@ describe("dissolveDuo", () => {
     await expect(dissolveDuo("duo-1", "user-3")).rejects.toMatchObject({
       code: "not_a_member",
     });
+  });
+});
+
+describe("listMyDuos", () => {
+  it("geeft per duo tier, tierSize en de afgeleide ladderpositie (één ladder-query per regio)", async () => {
+    mockGetConfigNumber.mockImplementation(async (key: string) => {
+      if (key === "rating_tier_size") return 100;
+      throw new Error(`onverwachte config-key in test: ${key}`);
+    });
+    mockPrisma.duo.findMany.mockResolvedValueOnce([
+      { id: "duo-a", regionId: "r1", currentRating: 1250 },
+      { id: "duo-b", regionId: "r1", currentRating: 1180 },
+    ] as never);
+    mockGetLadderPositions.mockResolvedValueOnce([
+      { id: "duo-x", position: 1 },
+      { id: "duo-a", position: 2 },
+      { id: "duo-b", position: 3 },
+    ]);
+
+    const result = await listMyDuos("user-1");
+
+    expect(mockGetLadderPositions).toHaveBeenCalledTimes(1);
+    expect(result.map((d) => [d.id, d.tier, d.tierSize, d.position, d.ladderSize])).toEqual([
+      ["duo-a", 12, 100, 2, 3],
+      ["duo-b", 11, 100, 3, 3],
+    ]);
   });
 });

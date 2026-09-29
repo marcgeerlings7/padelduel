@@ -112,6 +112,7 @@ function challenge(partial: Partial<Challenge>): Challenge {
     match: null,
     voidedMatches: [],
     dispute: null,
+    postponements: [],
     ...partial,
   };
 }
@@ -120,6 +121,10 @@ const MATCH = {
   id: "m1",
   scoreRaw: "6-4,6-3",
   submittedBy: "u1",
+  submittedByDuoId: "a",
+  resultType: "PLAYED" as const,
+  concedingSide: null,
+  playedScoreRaw: null,
   submittedAt: "2026-09-25T10:00:00Z",
   confirmedAt: null,
   autoConfirmDeadline: "2026-09-27T10:00:00Z",

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { DISPLAY_NAME_MAX_LENGTH, displayNameSchema } from "@/lib/profile/validation";
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
@@ -43,6 +44,8 @@ function ErrorBox({ id, children }: { id?: string; children: React.ReactNode }) 
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [displayName, setDisplayName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -73,6 +76,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
+    const name = displayNameSchema.safeParse(displayName);
+    if (!name.success) {
+      setNameError(name.error.issues[0]?.message ?? "Vul je naam in.");
+      return;
+    }
+    setNameError(null);
+
     if (!passwordValid) {
       setError("Wachtwoord moet minimaal 10 tekens bevatten, met een hoofdletter, kleine letter en cijfer.");
       return;
@@ -89,7 +99,7 @@ export default function RegisterPage() {
     try {
       const result = await apiFetch<{ message: string; emailSent?: boolean }>("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, displayName: name.data }),
       });
       setEmailWarning(result.emailSent === false ? result.message : null);
       setRegisteredEmail(email);
@@ -188,7 +198,30 @@ export default function RegisterPage() {
         </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor={`${id}-name`}>Je naam</Label>
+          <Input
+            id={`${id}-name`}
+            type="text"
+            name="name"
+            autoComplete="name"
+            required
+            maxLength={DISPLAY_NAME_MAX_LENGTH}
+            value={displayName}
+            onChange={(e) => {
+              setDisplayName(e.target.value);
+              if (nameError) setNameError(null);
+            }}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={`${id}-name-hint`}
+            placeholder="Bijv. Sanne de Vries"
+          />
+          <p id={`${id}-name-hint`} className={cn("text-xs", nameError ? "text-loss" : "text-muted-foreground")}>
+            {nameError ?? "Zo zien andere spelers je. Je e-mailadres blijft privé."}
+          </p>
+        </div>
+
         <div className="grid gap-2">
           <Label htmlFor={`${id}-email`}>E-mailadres</Label>
           <Input

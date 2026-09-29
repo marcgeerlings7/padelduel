@@ -10,6 +10,11 @@ export type HistoryMatchRow = {
   scoreRaw: string;
   submittedAt: Date;
   confirmedAt: Date | null;
+  /** KNLTB-aanvullingen; ontbreekt/undefined = gewone gespeelde uitslag. */
+  resultType?: "PLAYED" | "WALKOVER" | "RETIRED";
+  concedingSide?: "CHALLENGER" | "CHALLENGED" | null;
+  /** Werkelijk gespeelde (onvolledige) stand bij een opgave, uitdager eerst. */
+  playedScoreRaw?: string | null;
 };
 
 export type HistoryRatingRow = {
@@ -29,6 +34,7 @@ export type HistoryRatingRow = {
 };
 
 export type MatchHistoryKind = "match" | "voided" | "forfeit";
+export type HistoryResultType = "played" | "walkover" | "retired";
 export type ForfeitReason = "expired" | "unplayed_timeout";
 
 export type MatchHistoryEntry = {
@@ -60,7 +66,31 @@ export type MatchHistoryEntry = {
   forfeitReason: ForfeitReason | null;
   /** Forfeit-penalty later (deels) teruggedraaid via een dispute-correctie. */
   forfeitCorrected: boolean;
+  /** match/voided: soort uitslag (walkover/opgave, KNLTB); null bij forfeit. */
+  resultType: HistoryResultType | null;
+  /**
+   * Walkover/opgave: welke kant niet kwam of opgaf, vanuit dit duo
+   * ("self" = dit duo). null bij een gewone uitslag of forfeit.
+   */
+  concededBy: "self" | "opponent" | null;
+  /** Opgave: werkelijk gespeelde stand vanuit dit duo ("6-4,3-2"); anders null. */
+  playedScore: string | null;
 };
+
+const RESULT_TYPE_NAME: Record<NonNullable<HistoryMatchRow["resultType"]>, HistoryResultType> = {
+  PLAYED: "played",
+  WALKOVER: "walkover",
+  RETIRED: "retired",
+};
+
+/** "6-4,3-2" (uitdager eerst) → vanuit `role`; ongeldige invoer → null. */
+export function perspectiveScoreRaw(scoreRaw: string, role: "challenger" | "challenged"): string | null {
+  const parts = scoreRaw.split(",").map((part) => /^(\d+)-(\d+)$/.exec(part.trim()));
+  if (parts.some((m) => !m)) return null;
+  return parts
+    .map((m) => (role === "challenger" ? `${m![1]}-${m![2]}` : `${m![2]}-${m![1]}`))
+    .join(",");
+}
 
 function forfeitReasonFor(status: string): ForfeitReason | null {
   if (status === "EXPIRED") return "expired";
@@ -107,6 +137,8 @@ export function buildMatchHistory(
     };
     const p = matchFromPerspective(row, duoId);
     const isVoided = m.status === "VOIDED";
+    const role = isChallenger ? "challenger" : "challenged";
+    const concedingRole = m.concedingSide ? (m.concedingSide === "CHALLENGER" ? "challenger" : "challenged") : null;
     entries.push({
       kind: isVoided ? "voided" : "match",
       matchId: m.matchId,
@@ -126,6 +158,9 @@ export function buildMatchHistory(
       isForfeit: false,
       forfeitReason: null,
       forfeitCorrected: false,
+      resultType: RESULT_TYPE_NAME[m.resultType ?? "PLAYED"],
+      concededBy: concedingRole ? (concedingRole === role ? "self" : "opponent") : null,
+      playedScore: m.playedScoreRaw ? perspectiveScoreRaw(m.playedScoreRaw, role) : null,
     });
   }
 
@@ -152,6 +187,9 @@ export function buildMatchHistory(
       isForfeit: true,
       forfeitReason: forfeitReasonFor(challenge.status),
       forfeitCorrected: rows.some((r) => r.isForfeit && r.ratingAfter > r.ratingBefore),
+      resultType: null,
+      concededBy: null,
+      playedScore: null,
     });
   }
 

@@ -18,6 +18,7 @@ import {
   stepGames,
   toApiSets,
 } from "./score-entry";
+import { scoreErrorMessage } from "./result-type";
 
 const EMPTY_SET: SetDraft = { own: "", opponent: "" };
 
@@ -81,7 +82,11 @@ export function ScoreEntry({
       });
       onSubmitted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "De score kon niet worden verstuurd. Probeer het opnieuw.");
+      setError(
+        err instanceof ApiError
+          ? scoreErrorMessage(err.code, err.message)
+          : "De score kon niet worden verstuurd. Probeer het opnieuw.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +184,7 @@ export function ScoreEntry({
   );
 }
 
-function TeamHead({ name, own = false }: { name: string; own?: boolean }) {
+export function TeamHead({ name, own = false }: { name: string; own?: boolean }) {
   return (
     <div className="flex min-w-0 flex-col items-center gap-1 text-center">
       <DuoAvatar name={name} size="sm" own={own} className={own ? "ring-offset-court" : undefined} />
@@ -288,7 +293,7 @@ function SetRow({
   );
 }
 
-function Stepper({
+export function Stepper({
   value,
   label,
   invalid,

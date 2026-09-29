@@ -412,3 +412,13 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 - Jobs: `/api/jobs/run-all` bevat nu `reminders`; nieuw `/api/jobs/send-reminders`.
 
 **Deploy-volgorde:** eerst `npx prisma migrate deploy` (nieuwe kolommen/tabellen/config), dan de code — de nieuwe code leest `default_start_rating`, `postponement_*` en `notification_*` via `getConfigNumber` (harde fout als de rij ontbreekt).
+
+---
+
+## Integratie-UI KNLTB-aanvullingen (2026-09-29)
+
+**Wat:** UI voor de eerder gebouwde backend: `/profile` (weergavenaam, zelf opgegeven KNLTB-speelsterkte, zes e-mailvoorkeuren), "Stel je naam in"-melding op het dashboard, weergavenaam verplicht bij registratie, walkover/opgave-invoer + weergave op challengekaarten en in de wedstrijdhistorie, uitstel aanvragen/accepteren/weigeren/intrekken, en uitleg daarvan op `/info`.
+**API-wijzigingen (additief, behalve één):** dashboard geeft `partnerName` i.p.v. **`partnerEmail` (verwijderd — privacy)**; matches in `GET /api/duos/[id]/challenges` krijgen `submittedByDuoId` (zelfde regel als `respondToMatch`); `GET /api/duos/mine` krijgt `tierSize`, `position`, `ladderSize`; wedstrijdhistorie krijgt `resultType`, `concededBy`, `playedScore`; `ApiError` draagt nu de API-`code`.
+**Seed:** extra regio Zwolle (users 21–27, drie duo's met geaccepteerde challenges) uitsluitend voor e2e 08–10; de Utrecht-ladder blijft ongewijzigd.
+**Tests:** e2e 08 (profiel), 09 (walkover + opgave), 10 (uitstel) toegevoegd; volledige suite 16/16 groen. Assertion-timeout in Playwright naar 15s (on-demand compile in de dev-server); registratieformulier kreeg `noValidate` zodat de eigen Nederlandse validatie i.p.v. de browserpopup verschijnt.
+**Restpunt:** bestaande accounts zonder naam zien een neutrale fallback ("Speler XXXXXX") tot ze er een instellen; er is geen dwang.

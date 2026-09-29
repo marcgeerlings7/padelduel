@@ -4,6 +4,7 @@ import { getLadder, LadderEntry } from "@/server/services/ladderService";
 import { DuoStatsSummary, toDuoStatsSummary } from "@/lib/stats";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
 import { getDuoStats } from "@/server/services/statsService";
+import { publicDisplayName } from "@/lib/profile/displayName";
 
 export type DashboardDuoCard = {
   duo: {
@@ -15,7 +16,11 @@ export type DashboardDuoCard = {
     position: number;
     ladderSize: number;
     tier: number;
-    partnerEmail: string | null;
+    /**
+     * Publieke naam van de duo-partner (weergavenaam of neutrale fallback,
+     * nooit het e-mailadres); null als er (nog) geen partner is.
+     */
+    partnerName: string | null;
   } & DuoStatsSummary; // afgeleide statistieken (KNLTB-aanvullingen), zelfde velden als LadderEntry
   above: LadderEntry[];
   below: LadderEntry[];
@@ -70,7 +75,7 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
 
     const partnerMembership = await prisma.duoMembership.findFirst({
       where: { duoId: duo.id, userId: { not: userId }, leftAt: null },
-      include: { user: true },
+      select: { user: { select: { id: true, displayName: true } } },
     });
 
     cards.push({
@@ -83,7 +88,7 @@ export async function getDashboard(userId: string): Promise<DashboardData> {
         position,
         ladderSize: ladder.length,
         tier: getTier(duo.currentRating, tierSize),
-        partnerEmail: partnerMembership?.user.email ?? null,
+        partnerName: partnerMembership ? publicDisplayName(partnerMembership.user) : null,
         ...toDuoStatsSummary(stats),
       },
       above,

@@ -6,6 +6,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({
       email: "Test@Example.com",
       password: "Wachtwoord1",
+      displayName: "Jan",
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -14,12 +15,12 @@ describe("registerSchema", () => {
   });
 
   it("weigert een ongeldig e-mailadres", () => {
-    const result = registerSchema.safeParse({ email: "geen-email", password: "Wachtwoord1" });
+    const result = registerSchema.safeParse({ email: "geen-email", password: "Wachtwoord1", displayName: "Jan" });
     expect(result.success).toBe(false);
   });
 
   it("weigert een te simpel wachtwoord", () => {
-    const result = registerSchema.safeParse({ email: "test@example.com", password: "simpel" });
+    const result = registerSchema.safeParse({ email: "test@example.com", password: "simpel", displayName: "Jan" });
     expect(result.success).toBe(false);
   });
 });

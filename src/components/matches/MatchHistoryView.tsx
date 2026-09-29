@@ -22,7 +22,7 @@ import { ResultTile, type TileResult } from "./ResultTile";
 import { SetScoreline } from "./SetScoreline";
 import { formatShortDate } from "./time";
 import type { MatchHistoryItem, MatchHistoryResponse } from "./types";
-import { useOwnDuos } from "./useOwnDuos";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 
 const PAGE_SIZE = 15;
 
@@ -34,7 +34,7 @@ const PAGE_SIZE = 15;
  */
 export function MatchHistoryView({ duoId }: { duoId: string }) {
   const router = useRouter();
-  const { duos } = useOwnDuos();
+  const { duos } = useMyDuos();
   const [page, setPage] = useState(1);
   const [data, setData] = useState<MatchHistoryResponse | null>(null);
   const [loadingPage, setLoadingPage] = useState(false);
@@ -288,6 +288,17 @@ function MatchRow({ entry, duoId }: { entry: MatchHistoryItem; duoId: string }) 
             </Badge>
           ) : null}
           {entry.forfeitCorrected ? <Badge variant="win">Gecorrigeerd</Badge> : null}
+          {entry.resultType === "walkover" ? (
+            <Badge variant="outline" title={entry.concededBy === "self" ? "Jullie kwamen niet opdagen" : "Tegenstander kwam niet opdagen"}>
+              {entry.concededBy === "self" ? "Walkover (jullie afwezig)" : "Walkover"}
+            </Badge>
+          ) : null}
+          {entry.resultType === "retired" ? (
+            <Badge variant="outline">
+              {entry.concededBy === "self" ? "Opgave door jullie" : "Opgave tegenstander"}
+              {entry.playedScore ? ` bij ${entry.playedScore.replace(/,/g, " ")}` : ""}
+            </Badge>
+          ) : null}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
