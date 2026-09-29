@@ -124,7 +124,7 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
     return (
       <div className="flex flex-col gap-6">
         <StatGridSkeleton count={3} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
-        <ChartSkeleton aspectRatio="16 / 9" />
+        <ChartSkeleton aspectRatio="2 / 1" />
         <TableSkeleton rows={5} columns={4} />
       </div>
     );
@@ -184,7 +184,7 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
             : "Rating na elke wijziging."
         }
       >
-        <RatingChart data={series} tierSize={ladder?.tierSize} aspectRatio="16 / 9" />
+        <RatingChart data={series} tierSize={ladder?.tierSize} aspectRatio="2 / 1" />
       </SectionCard>
 
       <SectionCard
