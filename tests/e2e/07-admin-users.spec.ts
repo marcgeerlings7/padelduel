@@ -22,6 +22,7 @@ test.describe("Admin: gebruikersbeheer (post-v1)", () => {
     await expect(row20).toHaveCount(1);
     await expect(row20).toContainText("Speler");
     await row20.getByRole("button", { name: "Maak admin" }).click();
+    await pageAdmin.getByRole("button", { name: "Ja, maak admin" }).click();
     await expect(row20).toContainText("Admin");
     await expect(row20.getByRole("button", { name: "Admin-rechten intrekken" })).toBeVisible();
 
@@ -32,6 +33,7 @@ test.describe("Admin: gebruikersbeheer (post-v1)", () => {
 
     // Degraderen werkt direct, ook voor een nog geldig token met ADMIN-rol
     await row20.getByRole("button", { name: "Admin-rechten intrekken" }).click();
+    await pageAdmin.getByRole("button", { name: "Ja, rechten intrekken" }).click();
     await expect(row20).toContainText("Speler");
     const afterDemote = await apiRequest(page20, "GET", "/api/admin/users");
     expect(afterDemote.status).toBe(403);
@@ -41,6 +43,7 @@ test.describe("Admin: gebruikersbeheer (post-v1)", () => {
     await pageAdmin.getByRole("button", { name: "Zoeken" }).click();
     const adminRow = pageAdmin.locator("tr", { hasText: "admin@example.com" });
     await adminRow.getByRole("button", { name: "Admin-rechten intrekken" }).click();
+    await pageAdmin.getByRole("button", { name: "Ja, rechten intrekken" }).click();
     await expect(pageAdmin.getByText("Je bent de laatste admin")).toBeVisible();
     await expect(adminRow).toContainText("Admin");
 
