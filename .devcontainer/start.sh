@@ -86,7 +86,10 @@ if ! command -v graphify >/dev/null 2>&1; then
   uv tool install "graphifyy[sql]" >/dev/null 2>&1 \
     || echo "[start] graphify-installatie mislukt — draai: uv tool install 'graphifyy[sql]'"
 fi
-command -v graphify >/dev/null 2>&1 && graphify update . >/dev/null 2>&1
+if command -v graphify >/dev/null 2>&1; then
+  graphify hook install >/dev/null 2>&1   # git-hooks staan niet in git
+  graphify update . >/dev/null 2>&1
+fi
 
 # --- 5. Vercel CLI: installeren (idempotent) + inlog-status checken ---
 # `vercel login` opent een echte browser-popup/magic-link-flow en vraagt

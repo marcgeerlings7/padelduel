@@ -28,6 +28,13 @@ input-validatie, transacties waar consistentie vereist is.
 Next.js + TypeScript + Prisma + PostgreSQL + Tailwind. Zie /docs voor schema en ER-diagram.
 
 ## Werkwijze
+- **Altijd eerst graphify raadplegen** bij vragen over de codebase of vóór het
+  zoeken/lezen van bronbestanden: `graphify query "<vraag>"`, `graphify explain
+  "<concept>"` of `graphify path "<A>" "<B>"` (graph in graphify-out/, gitignored).
+  Pas daarna gericht grep/lezen voor de exacte regels. De graph wordt automatisch
+  bijgewerkt via git-hooks (post-commit/post-checkout) en bij Codespace-start;
+  na grote ongecommitte wijzigingen: `graphify update .`. Subagents krijgen deze
+  instructie expliciet mee (in worktrees eerst `graphify update .`).
 - Schrijf eerst een kort plan (2-5 stappen) voordat je code genereert bij een nieuwe feature.
 - Schrijf unit tests voor alle pure business-logica (met name /src/lib/elo).
 - Vanaf Sprint 4: voeg voor elke nieuwe user-facing flow ook een Playwright
