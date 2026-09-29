@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, Scale, ShieldCheck, Swords } from "lucide-react";
+import { CircleAlert, Flag, Scale, ShieldCheck, Swords, UserX } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { DuoAvatar } from "@/components/app/DuoAvatar";
@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { type Challenge, type ChallengeGroup, opponentOf, roleOf, statusLabel } from "./challenges";
 import { DeadlineChip } from "./DeadlineChip";
 import { DisputeForm } from "./DisputeForm";
-import { ScoreEntry } from "./ScoreEntry";
+import { PostponementPanel } from "./PostponementPanel";
+import { resultTypeNote, type ResultTypeNote } from "./result-type";
+import { ResultEntry } from "./ResultEntry";
 import { formatSets, perspectiveSets } from "./score-entry";
 import { SetScoreline } from "./SetScoreline";
 import { deadlineUrgency, formatShortDate } from "./time";
@@ -26,13 +28,14 @@ export type ChallengeActions = {
  * e2e-contract: de kaart is een `li` met de tekst "vs. <tegenstander>",
  * precies één statuslabel, en de knoppen Accepteren / Weigeren /
  * Bevestigen / Betwisten / Score indienen / Dispute openen.
+ * Bevestigen/betwisten verschijnt alleen voor het duo dat de uitslag NIET
+ * indiende (`match.submittedByDuoId`, zelfde regel als de server).
  */
 export function ChallengeCard({
   challenge: c,
   group,
   duoId,
   ownName,
-  myUserId,
   busyId,
   actions,
 }: {
@@ -40,7 +43,6 @@ export function ChallengeCard({
   group: ChallengeGroup;
   duoId: string;
   ownName: string;
-  myUserId: string | null;
   busyId: string | null;
   actions: ChallengeActions;
 }) {
@@ -50,11 +52,11 @@ export function ChallengeCard({
   const matchSets = c.match ? perspectiveSets(c.match.scoreRaw, role) : [];
   const ownSetsWon = matchSets.filter((s) => s.own > s.opponent).length;
   const wonMatch = matchSets.length > 0 && ownSetsWon * 2 > matchSets.length;
-  const submittedByMe = Boolean(c.match && myUserId && c.match.submittedBy === myUserId);
+  const submittedByOwnDuo = c.match?.submittedByDuoId === duoId;
   const needsAction =
     group === "incoming" ||
     group === "toPlay" ||
-    (c.match?.status === "AWAITING_CONFIRMATION" && !submittedByMe) ||
+    (c.match?.status === "AWAITING_CONFIRMATION" && !submittedByOwnDuo) ||
     (c.match?.status === "DISPUTED" && !c.match.dispute);
 
   const roleLine =
@@ -84,8 +86,8 @@ export function ChallengeCard({
         </Badge>
       </div>
 
-      <CardBody challenge={c} group={group} role={role} ownName={ownName} opponentName={opponent.name}
-        matchSets={matchSets} wonMatch={wonMatch} submittedByMe={submittedByMe} busyId={busyId} actions={actions} />
+      <CardBody challenge={c} group={group} duoId={duoId} role={role} ownName={ownName} opponentName={opponent.name}
+        matchSets={matchSets} wonMatch={wonMatch} submittedByOwnDuo={submittedByOwnDuo} busyId={busyId} actions={actions} />
 
       <div className="-mx-4 -mb-4 flex items-center justify-between gap-2 border-t px-4 py-2 sm:-mx-5 sm:-mb-5 sm:px-5">
         <Link
@@ -123,23 +125,25 @@ function Note({ icon: Icon, children, tone = "muted" }: { icon: typeof Scale; ch
 function CardBody({
   challenge: c,
   group,
+  duoId,
   role,
   ownName,
   opponentName,
   matchSets,
   wonMatch,
-  submittedByMe,
+  submittedByOwnDuo,
   busyId,
   actions,
 }: {
   challenge: Challenge;
   group: ChallengeGroup;
+  duoId: string;
   role: "challenger" | "challenged";
   ownName: string;
   opponentName: string;
   matchSets: ReturnType<typeof perspectiveSets>;
   wonMatch: boolean;
-  submittedByMe: boolean;
+  submittedByOwnDuo: boolean;
   busyId: string | null;
   actions: ChallengeActions;
 }) {
@@ -175,13 +179,20 @@ function CardBody({
     return (
       <>
         {c.matchDeadline ? <DeadlineChip deadline={c.matchDeadline} prefix="Speeldeadline" /> : null}
+        <PostponementPanel
+          challengeId={c.id}
+          duoId={duoId}
+          opponentName={opponentName}
+          refreshKey={`${c.matchDeadline ?? ""}|${c.postponements.map((p) => `${p.id}:${p.status}`).join(",")}`}
+          onChanged={actions.reload}
+        />
         {lastVoided ? (
           <Note icon={CircleAlert} tone="warning">
             Eerdere score ({formatSets(perspectiveSets(lastVoided.scoreRaw, role))}) is ongeldig verklaard door een admin —
             speel opnieuw en dien een nieuwe score in.
           </Note>
         ) : null}
-        <ScoreEntry
+        <ResultEntry
           challengeId={c.id}
           role={role}
           ownName={ownName}
@@ -193,17 +204,19 @@ function CardBody({
   }
 
   const match = c.match;
+  const typeNote = match ? resultTypeNote(match, role, opponentName) : null;
 
   if (group === "result" && match) {
     return (
       <>
-        <MatchScore sets={matchSets} ownName={ownName} opponentName={opponentName} />
+        <MatchScore sets={matchSets} ownName={ownName} opponentName={opponentName} typeNote={typeNote} />
+        {typeNote ? <ResultTypeLine note={typeNote} /> : null}
         {match.status === "AWAITING_CONFIRMATION" ? (
           <>
             <DeadlineChip deadline={match.autoConfirmDeadline} prefix="Automatisch definitief" />
-            {submittedByMe ? (
+            {submittedByOwnDuo ? (
               <p className="text-sm text-muted-foreground">
-                Jij hebt deze uitslag ingevuld. {opponentName} kan hem goedkeuren of er een dispute over openen.
+                Jullie hebben deze uitslag ingevuld. {opponentName} kan hem goedkeuren of er een dispute over openen.
               </p>
             ) : (
               <>
@@ -248,8 +261,9 @@ function CardBody({
   return (
     <>
       {match && matchSets.length > 0 ? (
-        <MatchScore sets={matchSets} ownName={ownName} opponentName={opponentName} won={wonMatch} />
+        <MatchScore sets={matchSets} ownName={ownName} opponentName={opponentName} won={wonMatch} typeNote={typeNote} />
       ) : null}
+      {match && typeNote ? <ResultTypeLine note={typeNote} /> : null}
       {match?.dispute && match.dispute.status !== "OPEN" ? (
         <Note icon={ShieldCheck}>Na een dispute heeft een admin deze uitslag gehandhaafd.</Note>
       ) : null}
@@ -295,16 +309,29 @@ function ForfeitDisputeNote({ status }: { status: string }) {
   return <Note icon={Scale}>Forfeit-dispute geopend — wordt beoordeeld door een admin.</Note>;
 }
 
+/** Walkover/opgave-uitleg onder de uitslag. */
+function ResultTypeLine({ note }: { note: ResultTypeNote }) {
+  const Icon = note.label === "Walkover" ? UserX : Flag;
+  return (
+    <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <span>{note.description}</span>
+    </p>
+  );
+}
+
 function MatchScore({
   sets,
   ownName,
   opponentName,
   won,
+  typeNote,
 }: {
   sets: ReturnType<typeof perspectiveSets>;
   ownName: string;
   opponentName: string;
   won?: boolean;
+  typeNote?: ResultTypeNote | null;
 }) {
   if (sets.length === 0) return null;
   return (
@@ -313,6 +340,11 @@ function MatchScore({
         <span className={cn("truncate", won === true ? "font-semibold" : "text-muted-foreground")}>{ownName}</span>
         <span className={cn("truncate", won === false ? "font-semibold" : "text-muted-foreground")}>{opponentName}</span>
       </div>
+      {typeNote ? (
+        <Badge variant="outline" className="shrink-0">
+          {typeNote.label}
+        </Badge>
+      ) : null}
       <SetScoreline sets={sets} />
     </div>
   );

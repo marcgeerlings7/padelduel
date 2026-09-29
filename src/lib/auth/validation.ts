@@ -8,13 +8,11 @@ export const registerSchema = z.object({
     message:
       "Wachtwoord moet minimaal 10 tekens bevatten, met een hoofdletter, kleine letter en cijfer.",
   }),
-  // KNLTB-aanvullingen: weergavenaam bij registratie. Tijdelijk optioneel
-  // in de API zodat de huidige registratiepagina (die het veld nog niet
-  // meestuurt) blijft werken; het nieuwe registratieformulier hoort het
-  // verplicht te maken. Wordt het wel meegestuurd, dan geldt de volledige
-  // validatie. Zonder naam toont de app een neutrale fallback en vraagt
-  // /api/me/profile (hasDisplayName: false) de UI om een naam.
-  displayName: displayNameSchema.optional(),
+  // KNLTB-aanvullingen: weergavenaam bij registratie is verplicht (de
+  // registratiepagina vraagt hem). Bestaande accounts zonder naam krijgen
+  // een neutrale fallback en worden via /api/me/profile
+  // (hasDisplayName: false) gevraagd er alsnog een in te stellen.
+  displayName: displayNameSchema,
 });
 
 export const loginSchema = z.object({

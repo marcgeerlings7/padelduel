@@ -7,7 +7,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
-    return jsonError("Ongeldige invoer.", 400, "invalid_input");
+    // De weergavenaam-regels zijn voor de gebruiker te herstellen; geef die
+    // melding door. E-mail/wachtwoord houden de generieke melding.
+    const nameIssue = parsed.error.issues.find((issue) => issue.path[0] === "displayName");
+    const message = nameIssue && nameIssue.code !== "invalid_type" ? nameIssue.message : "Ongeldige invoer.";
+    return jsonError(message, 400, "invalid_input");
   }
 
   let emailSent: boolean;

@@ -5,6 +5,7 @@ import { getTier } from "@/lib/elo";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
 import { computeStartRating } from "@/lib/duo/startRating";
 import { publicDisplayName } from "@/lib/profile/displayName";
+import { getLadderPositions } from "@/server/services/ladderService";
 import type { DuoCategoryName } from "@/lib/duo/validation";
 
 export class DuoError extends Error {
@@ -269,7 +270,25 @@ export async function listMyDuos(userId: string) {
     }),
     getConfigNumber("rating_tier_size"),
   ]);
-  return duos.map((duo) => ({ ...duo, tier: getTier(duo.currentRating, tierSize) }));
+  // Ladderpositie is altijd afgeleid (RANK-query); één query per regio,
+  // ook als de gebruiker meerdere duo's in dezelfde regio heeft.
+  const regionIds = Array.from(new Set(duos.map((duo) => duo.regionId)));
+  const ladders = new Map(
+    await Promise.all(regionIds.map(async (regionId) => [regionId, await getLadderPositions(regionId)] as const)),
+  );
+  return duos.map((duo) => {
+    const ladder = ladders.get(duo.regionId) ?? [];
+    const entry = ladder.find((row) => row.id === duo.id);
+    return {
+      ...duo,
+      tier: getTier(duo.currentRating, tierSize),
+      /** platform_config.rating_tier_size, voor tier-grenzen in grafieken. */
+      tierSize,
+      /** Afgeleide ladderpositie in de eigen regio (null als het duo er onverwacht niet in staat). */
+      position: entry?.position ?? null,
+      ladderSize: ladder.length,
+    };
+  });
 }
 
 /**

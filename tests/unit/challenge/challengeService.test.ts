@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockPrisma = {
-  duoMembership: { findFirst: vi.fn() },
+  duoMembership: { findFirst: vi.fn(), findMany: vi.fn(async () => [] as Array<{ userId: string; duoId: string }>) },
   duo: {
     findUnique: vi.fn(),
     findUniqueOrThrow: vi.fn(),
@@ -314,5 +314,40 @@ describe("listChallengesForDuo (post-v1: meerdere matches per challenge)", () =>
     // Alleen voided matches -> match = null, zodat de UI opnieuw een score laat indienen
     expect(result[1]).toMatchObject({ id: "challenge-2", match: null, voidedMatches: [{ id: "match-3" }] });
     expect(result[2]).toMatchObject({ match: null, voidedMatches: [] });
+  });
+
+  it("zet submittedByDuoId met dezelfde regel als respondToMatch (actief lid uitdager → uitdager)", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([
+      {
+        id: "c1",
+        challengerDuoId: "duo-a",
+        challengedDuoId: "duo-b",
+        matches: [{ id: "m1", status: "AWAITING_CONFIRMATION", submittedBy: "user-a" }],
+      },
+      {
+        id: "c2",
+        challengerDuoId: "duo-c",
+        challengedDuoId: "duo-a",
+        matches: [{ id: "m2", status: "COMPLETED", submittedBy: "user-a" }],
+      },
+    ]);
+    mockPrisma.duoMembership.findMany.mockResolvedValueOnce([{ userId: "user-a", duoId: "duo-a" }]);
+
+    const result = await listChallengesForDuo("duo-a");
+
+    expect(result[0].match).toMatchObject({ id: "m1", submittedByDuoId: "duo-a" });
+    expect(result[1].match).toMatchObject({ id: "m2", submittedByDuoId: "duo-a" });
+    const call = mockPrisma.duoMembership.findMany.mock.calls[0] as unknown as [{ where: unknown }];
+    expect(call[0].where).toMatchObject({
+      userId: { in: ["user-a"] },
+      duoId: { in: ["duo-a", "duo-c"] },
+      leftAt: null,
+    });
+  });
+
+  it("doet geen lidmaatschapsquery zonder matches", async () => {
+    mockPrisma.challenge.findMany.mockResolvedValueOnce([{ id: "c1", challengerDuoId: "duo-a", challengedDuoId: "duo-b", matches: [] }]);
+    await listChallengesForDuo("duo-a");
+    expect(mockPrisma.duoMembership.findMany).not.toHaveBeenCalled();
   });
 });

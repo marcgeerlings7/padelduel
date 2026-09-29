@@ -416,3 +416,13 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 ### Productie-inrichting (2026-09-29)
 **Wat:** het Vercel-project had géén enkele environment-variabele meer (vermoedelijk verloren bij het opnieuw koppelen van de repo op 17-08). Nu gezet: `JWT_SECRET`, `JOBS_SECRET`, `CRON_SECRET` (= JOBS_SECRET) voor production + preview, `APP_BASE_URL` voor production, en `DATABASE_URL` via de Neon-integratie (Vercel Marketplace). Een lege productiedatabase krijgt via de migraties tabellen + `platform_config`, maar geen regio's of admin: daarvoor is er `scripts/bootstrap-production.ts` (idempotent; `--region "<naam>"`, `--admin <email>` voor een bestaand geactiveerd account). `scripts/seed.ts` nooit tegen productie.
 **Let op:** previews delen dezelfde Neon-database als productie (geen migraties vanuit previews, zie hierboven) — voor een pilot acceptabel; bij groei Neon-branches per preview gebruiken. E-mail (Resend) is bewust nog niet gekoppeld: activatielinks staan in de Vercel Function Logs.
+
+---
+
+## Integratie-UI KNLTB-aanvullingen (2026-09-29)
+
+**Wat:** UI voor de eerder gebouwde backend: `/profile` (weergavenaam, zelf opgegeven KNLTB-speelsterkte, zes e-mailvoorkeuren), "Stel je naam in"-melding op het dashboard, weergavenaam verplicht bij registratie, walkover/opgave-invoer + weergave op challengekaarten en in de wedstrijdhistorie, uitstel aanvragen/accepteren/weigeren/intrekken, en uitleg daarvan op `/info`.
+**API-wijzigingen (additief, behalve één):** dashboard geeft `partnerName` i.p.v. **`partnerEmail` (verwijderd — privacy)**; matches in `GET /api/duos/[id]/challenges` krijgen `submittedByDuoId` (zelfde regel als `respondToMatch`); `GET /api/duos/mine` krijgt `tierSize`, `position`, `ladderSize`; wedstrijdhistorie krijgt `resultType`, `concededBy`, `playedScore`; `ApiError` draagt nu de API-`code`.
+**Seed:** extra regio Zwolle (users 21–27, drie duo's met geaccepteerde challenges) uitsluitend voor e2e 08–10; de Utrecht-ladder blijft ongewijzigd.
+**Tests:** e2e 08 (profiel), 09 (walkover + opgave), 10 (uitstel) toegevoegd; volledige suite 16/16 groen. Assertion-timeout in Playwright naar 15s (on-demand compile in de dev-server); registratieformulier kreeg `noValidate` zodat de eigen Nederlandse validatie i.p.v. de browserpopup verschijnt.
+**Restpunt:** bestaande accounts zonder naam zien een neutrale fallback ("Speler XXXXXX") tot ze er een instellen; er is geen dwang.

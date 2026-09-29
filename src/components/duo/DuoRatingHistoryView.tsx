@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
+import type { MyDuo } from "@/lib/client/useMyDuos";
 import { cn } from "@/lib/utils";
 
 type RatingHistoryEntry = {
@@ -32,10 +33,8 @@ type RatingHistoryEntry = {
   opponentName: string | null;
 };
 
-type LadderResponse = {
-  tierSize: number;
-  ladder: { id: string; position: number; tier: number; currentRating: number }[];
-};
+/** Wat de view van een eigen duo gebruikt (uit GET /api/duos/mine). */
+export type RatingHistoryDuoInfo = Pick<MyDuo, "currentRating" | "tier" | "tierSize" | "position">;
 
 type EntryKind = "match" | "forfeit" | "correction";
 
@@ -57,13 +56,13 @@ const KIND_BADGE: Record<EntryKind, { label: string; variant: "muted" | "loss" |
 
 /**
  * Ratinggeschiedenis van één duo: kerngetallen, verloop (Bklit-chart met
- * tier-grenzen) en een tabel met elke mutatie. `regionSlug` (optioneel) haalt
- * tier_size en de ladderpositie op via /api/ladder.
+ * tier-grenzen) en een tabel met elke mutatie. `duo` (optioneel, alleen voor
+ * eigen duo's, uit /api/duos/mine) levert tier_size en de ladderpositie —
+ * zonder die data werkt de pagina ook.
  */
-export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; regionSlug?: string }) {
+export function DuoRatingHistoryView({ duoId, duo }: { duoId: string; duo?: RatingHistoryDuoInfo | null }) {
   const router = useRouter();
   const [history, setHistory] = useState<RatingHistoryEntry[] | null>(null);
-  const [ladder, setLadder] = useState<LadderResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -92,22 +91,7 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
     };
   }, [duoId, router, attempt]);
 
-  useEffect(() => {
-    if (!regionSlug) return;
-    let cancelled = false;
-    // Alleen voor tier-grenzen en positie; zonder deze data werkt de pagina ook.
-    apiFetch<LadderResponse>(`/api/ladder?regionSlug=${encodeURIComponent(regionSlug)}`)
-      .then((data) => {
-        if (!cancelled) setLadder(data);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [regionSlug]);
-
   const series = useMemo(() => (history ? toRatingSeries(history) : []), [history]);
-  const ladderEntry = ladder?.ladder.find((e) => e.id === duoId) ?? null;
 
   if (error) {
     return (
@@ -146,7 +130,7 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
   }
 
   const latest = history[0];
-  const current = ladderEntry?.currentRating ?? latest.ratingAfter;
+  const current = duo?.currentRating ?? latest.ratingAfter;
   const ratings = series.map((p) => p.rating);
   const peak = Math.max(...ratings);
   const low = Math.min(...ratings);
@@ -162,8 +146,10 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
           value={<AnimatedNumber value={current} />}
           delta={<RatingDelta value={latest.ratingAfter - latest.ratingBefore} variant="inline" tone="court" forfeit={latest.isForfeit} />}
           hint={
-            ladderEntry && ladder
-              ? `Positie ${ladderEntry.position} in de ladder, tier ${ladderEntry.tier}`
+            duo
+              ? duo.position !== null
+                ? `Positie ${duo.position} in de ladder, tier ${duo.tier}`
+                : `Tier ${duo.tier}`
               : undefined
           }
           className="col-span-2 lg:col-span-1"
@@ -179,12 +165,12 @@ export function DuoRatingHistoryView({ duoId, regionSlug }: { duoId: string; reg
       <SectionCard
         title="Verloop"
         description={
-          ladder
-            ? `Stippellijnen markeren de tier-grenzen (elke ${ladder.tierSize} punten).`
+          duo
+            ? `Stippellijnen markeren de tier-grenzen (elke ${duo.tierSize} punten).`
             : "Rating na elke wijziging."
         }
       >
-        <RatingChart data={series} tierSize={ladder?.tierSize} aspectRatio="2 / 1" />
+        <RatingChart data={series} tierSize={duo?.tierSize} aspectRatio="2 / 1" />
       </SectionCard>
 
       <SectionCard

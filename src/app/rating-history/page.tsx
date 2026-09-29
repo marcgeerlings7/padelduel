@@ -8,11 +8,11 @@ import { Page } from "@/components/app/Page";
 import { PageHeader } from "@/components/app/PageHeader";
 import { DuoRatingHistoryView } from "@/components/duo/DuoRatingHistoryView";
 import { DuoSwitcher } from "@/components/matches/DuoSwitcher";
-import { useOwnDuos } from "@/components/matches/useOwnDuos";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 import { Button } from "@/components/ui/button";
 
 export default function RatingHistoryPage() {
-  const { duos, selectedId, setSelectedId, error } = useOwnDuos();
+  const { duos, selectedId, setSelectedId, error } = useMyDuos();
   const selected = duos?.find((d) => d.id === selectedId) ?? null;
 
   return (
@@ -46,7 +46,7 @@ export default function RatingHistoryPage() {
       {duos && duos.length > 1 ? <DuoSwitcher duos={duos} value={selectedId} onChange={setSelectedId} /> : null}
 
       {selected ? (
-        <DuoRatingHistoryView key={selected.id} duoId={selected.id} regionSlug={selected.region.slug} />
+        <DuoRatingHistoryView key={selected.id} duoId={selected.id} duo={selected} />
       ) : null}
     </Page>
   );

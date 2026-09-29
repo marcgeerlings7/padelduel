@@ -8,11 +8,11 @@ import { Page } from "@/components/app/Page";
 import { PageHeader } from "@/components/app/PageHeader";
 import { DuoChallengesView } from "@/components/duo/DuoChallengesView";
 import { DuoSwitcher } from "@/components/matches/DuoSwitcher";
-import { useOwnDuos } from "@/components/matches/useOwnDuos";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 import { Button } from "@/components/ui/button";
 
 export default function ChallengesPage() {
-  const { duos, selectedId, setSelectedId, error } = useOwnDuos();
+  const { duos, selectedId, setSelectedId, error } = useMyDuos();
   const selected = duos?.find((d) => d.id === selectedId) ?? null;
 
   return (

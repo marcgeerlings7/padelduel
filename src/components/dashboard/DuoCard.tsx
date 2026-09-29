@@ -44,9 +44,9 @@ export function DuoCard({ card, history }: { card: DashboardDuoCard; history: Hi
             <h2 id={titleId} className="truncate font-display text-[1.625rem] leading-none font-bold">
               {duo.name}
             </h2>
-            {duo.partnerEmail ? (
+            {duo.partnerName ? (
               <p className="truncate text-sm text-muted-foreground">
-                Met <span className="text-foreground">{duo.partnerEmail}</span>
+                Met <span className="text-foreground">{duo.partnerName}</span>
               </p>
             ) : null}
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">

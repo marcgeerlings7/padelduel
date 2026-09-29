@@ -10,7 +10,8 @@ export type DashboardDuo = {
   position: number;
   ladderSize: number;
   tier: number;
-  partnerEmail: string | null;
+  /** Publieke naam van de partner (nooit e-mail). */
+  partnerName: string | null;
   wins: number;
   losses: number;
   streak: string;

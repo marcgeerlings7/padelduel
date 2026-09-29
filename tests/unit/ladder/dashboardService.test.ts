@@ -118,6 +118,46 @@ describe("getDashboard", () => {
   });
 });
 
+describe("getDashboard — partner (privacy)", () => {
+  it("toont de publieke naam van de partner en nooit het e-mailadres", async () => {
+    mockPrisma.duoMembership.findMany.mockResolvedValueOnce([membership("duo-1")]);
+    mockGetLadder.mockResolvedValueOnce(ladderOf(3));
+    mockPrisma.duoMembership.findFirst.mockResolvedValueOnce({
+      user: { id: "0a1b2c3d-0000-4000-8000-000000000000", displayName: "Sanne" },
+    });
+
+    const result = await getDashboard("user-1");
+
+    expect(result.duos[0].duo.partnerName).toBe("Sanne");
+    expect(result.duos[0].duo).not.toHaveProperty("partnerEmail");
+    // De query selecteert alleen id + weergavenaam van de partner.
+    expect(mockPrisma.duoMembership.findFirst.mock.calls[0][0].select).toEqual({
+      user: { select: { id: true, displayName: true } },
+    });
+  });
+
+  it("valt zonder weergavenaam terug op de neutrale naam", async () => {
+    mockPrisma.duoMembership.findMany.mockResolvedValueOnce([membership("duo-1")]);
+    mockGetLadder.mockResolvedValueOnce(ladderOf(3));
+    mockPrisma.duoMembership.findFirst.mockResolvedValueOnce({
+      user: { id: "0a1b2c3d-0000-4000-8000-000000000000", displayName: null },
+    });
+
+    const result = await getDashboard("user-1");
+
+    expect(result.duos[0].duo.partnerName).toBe("Speler 0A1B2C");
+  });
+
+  it("partnerName is null zonder partner", async () => {
+    mockPrisma.duoMembership.findMany.mockResolvedValueOnce([membership("duo-1")]);
+    mockGetLadder.mockResolvedValueOnce(ladderOf(3));
+
+    const result = await getDashboard("user-1");
+
+    expect(result.duos[0].duo.partnerName).toBeNull();
+  });
+});
+
 describe("getDashboard — afgeleide statistieken", () => {
   it("neemt W-L, reeks, betrouwbaarheid en inactief-vlag over van de eigen ladderrij", async () => {
     const stats = {

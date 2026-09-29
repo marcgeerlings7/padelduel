@@ -14,6 +14,15 @@ test.describe("Registreren (US-A1)", () => {
     await page.fill('input[type="email"]', "newplayer@example.com");
     await page.fill('input[type="password"]', "zwak");
     await page.fill('input[type="password"] >> nth=1', "zwak");
+
+    // Weergavenaam is verplicht (KNLTB-aanvullingen) en mag geen e-mailadres zijn.
+    await page.getByRole("button", { name: "Account aanmaken" }).click();
+    await expect(page.getByText("Je naam moet minimaal 2 tekens bevatten.")).toBeVisible();
+    await page.getByLabel("Je naam").fill("nieuw@example.com");
+    await page.getByRole("button", { name: "Account aanmaken" }).click();
+    await expect(page.getByText("Je naam mag alleen letters, cijfers, spaties en . ' - _ bevatten.")).toBeVisible();
+    await page.getByLabel("Je naam").fill("Nieuwe Speler");
+
     await page.getByRole("button", { name: "Account aanmaken" }).click();
     await expect(page.getByText("hoofdletter, kleine letter en een cijfer")).toBeVisible();
 

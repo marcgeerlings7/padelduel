@@ -23,7 +23,8 @@ test.describe("Ladder (US-C1, US-E1)", () => {
 
     const ownRows = page.locator('tr[data-own="true"]');
     await expect(ownRows).toHaveCount(2);
-    await expect(page.locator("tbody")).toContainText("Smash Sisters (jouw duo)");
-    await expect(page.locator("tbody")).toContainText("Chiquita Chargers (jouw duo)");
+    // De ladder heeft één <tbody> per tier; zoek in de hele tabel.
+    await expect(page.locator("table")).toContainText("Smash Sisters (jouw duo)");
+    await expect(page.locator("table")).toContainText("Chiquita Chargers (jouw duo)");
   });
 });

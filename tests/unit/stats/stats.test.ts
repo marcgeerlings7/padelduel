@@ -11,6 +11,7 @@ import {
   isInactive,
   lastActivityAt,
   matchFromPerspective,
+  perspectiveScoreRaw,
 } from "@/lib/stats";
 import { headToHeadParamsSchema, matchHistoryQuerySchema } from "@/lib/stats/validation";
 import { summarizeScore, parseScore } from "@/lib/match/score";
@@ -234,6 +235,50 @@ describe("buildMatchHistory", () => {
     ]);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ forfeitReason: "expired", forfeitCorrected: false, ratingDelta: -10 });
+  });
+  it("labelt walkover en opgave vanuit het eigen duo, met de gespeelde stand bij opgave", () => {
+    const entries = buildMatchHistory(
+      A,
+      [
+        {
+          matchId: "m-w", challengeId: "c-w", status: "COMPLETED", challengerDuo: duoA, challengedDuo: duoB,
+          scoreRaw: "6-0,6-0", submittedAt: new Date("2026-09-01"), confirmedAt: new Date("2026-09-02"),
+          resultType: "WALKOVER", concedingSide: "CHALLENGED", playedScoreRaw: null,
+        },
+        {
+          matchId: "m-r", challengeId: "c-r", status: "COMPLETED", challengerDuo: duoC, challengedDuo: duoA,
+          scoreRaw: "6-4,7-5,6-0", submittedAt: new Date("2026-09-05"), confirmedAt: new Date("2026-09-06"),
+          resultType: "RETIRED", concedingSide: "CHALLENGED", playedScoreRaw: "6-4,5-5",
+        },
+        {
+          matchId: "m-p", challengeId: "c-p", status: "COMPLETED", challengerDuo: duoA, challengedDuo: duoC,
+          scoreRaw: "6-4,6-4", submittedAt: new Date("2026-09-08"), confirmedAt: new Date("2026-09-09"),
+        },
+      ],
+      [],
+    );
+    const [played, retired, walkover] = entries;
+    expect(played).toMatchObject({ resultType: "played", concededBy: null, playedScore: null });
+    expect(retired).toMatchObject({ resultType: "retired", concededBy: "self", playedScore: "4-6,5-5", result: "L" });
+    expect(walkover).toMatchObject({ resultType: "walkover", concededBy: "opponent", playedScore: null, result: "W" });
+  });
+
+  it("forfeits hebben geen uitslagsoort", () => {
+    const entries = buildMatchHistory(A, [], [
+      {
+        matchId: null, challengeId: "c-e", ratingBefore: 1200, ratingAfter: 1190, isForfeit: true, createdAt: new Date("2026-09-10"),
+        challenge: { id: "c-e", status: "EXPIRED", challengerDuo: duoB, challengedDuo: duoA },
+      },
+    ]);
+    expect(entries[0]).toMatchObject({ resultType: null, concededBy: null, playedScore: null });
+  });
+});
+
+describe("perspectiveScoreRaw", () => {
+  it("draait de stand om voor de uitgedaagde en weigert onzin", () => {
+    expect(perspectiveScoreRaw("6-4,3-2", "challenger")).toBe("6-4,3-2");
+    expect(perspectiveScoreRaw("6-4,3-2", "challenged")).toBe("4-6,2-3");
+    expect(perspectiveScoreRaw("6-4,x", "challenged")).toBeNull();
   });
 });
 

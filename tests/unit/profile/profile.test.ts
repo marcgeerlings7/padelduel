@@ -43,10 +43,11 @@ describe("updateProfileSchema", () => {
 
 describe("registerSchema — weergavenaam", () => {
   const base = { email: "a@b.nl", password: "Wachtwoord123" };
-  it("optioneel (huidige registratiepagina stuurt hem nog niet mee)", () => {
-    expect(registerSchema.safeParse(base).success).toBe(true);
+  it("is verplicht", () => {
+    expect(registerSchema.safeParse(base).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, displayName: "   " }).success).toBe(false);
   });
-  it("wordt gevalideerd als hij wel meegestuurd wordt", () => {
+  it("wordt gevalideerd en genormaliseerd", () => {
     expect(registerSchema.parse({ ...base, displayName: " Jan " }).displayName).toBe("Jan");
     expect(registerSchema.safeParse({ ...base, displayName: "a@b.nl" }).success).toBe(false);
   });

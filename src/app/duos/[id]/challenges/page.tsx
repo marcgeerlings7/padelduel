@@ -6,11 +6,11 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { DuoChallengesView } from "@/components/duo/DuoChallengesView";
 import { DuoMeta } from "@/components/matches/DuoMeta";
 import { DuoSectionNav } from "@/components/matches/DuoSectionNav";
-import { useOwnDuos } from "@/components/matches/useOwnDuos";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 
 export default function DuoChallengesPage() {
   const params = useParams<{ id: string }>();
-  const { duos } = useOwnDuos();
+  const { duos } = useMyDuos();
   const duo = duos?.find((d) => d.id === params.id) ?? null;
 
   return (

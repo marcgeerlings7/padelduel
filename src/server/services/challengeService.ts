@@ -259,6 +259,8 @@ const PUBLIC_DUO_SELECT = {
  *
  * KNLTB-aanvullingen: matches bevatten nu ook resultType/concedingSide/
  * playedScoreRaw, en `postponements` (nieuwste eerst) de uitstelverzoeken.
+ * Elke match heeft `submittedByDuoId` (het duo namens wie de score is
+ * ingediend; additief).
  */
 export async function listChallengesForDuo(duoId: string) {
   const challenges = await prisma.challenge.findMany({
@@ -286,9 +288,32 @@ export async function listChallengesForDuo(duoId: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  return challenges.map(({ matches, ...challenge }) => ({
-    ...challenge,
-    match: matches.find((m) => m.status !== "VOIDED") ?? null,
-    voidedMatches: matches.filter((m) => m.status === "VOIDED"),
-  }));
+  // Namens welk duo is elke score ingediend? Zelfde regel als
+  // matchService.respondToMatch (actief lid van het uitdagende duo → dat duo,
+  // anders het uitgedaagde duo), zodat de UI bevestigen/betwisten verbergt
+  // voor precies het duo dat de server ook weigert. Eén query voor alles.
+  const submitterIds = Array.from(new Set(challenges.flatMap((c) => c.matches.map((m) => m.submittedBy))));
+  const challengerDuoIds = Array.from(new Set(challenges.map((c) => c.challengerDuoId)));
+  const activeChallengerMemberships =
+    submitterIds.length === 0
+      ? []
+      : await prisma.duoMembership.findMany({
+          where: { userId: { in: submitterIds }, duoId: { in: challengerDuoIds }, leftAt: null },
+          select: { userId: true, duoId: true },
+        });
+  const isActiveMember = new Set(activeChallengerMemberships.map((m) => `${m.duoId}:${m.userId}`));
+
+  return challenges.map(({ matches, ...challenge }) => {
+    const withSubmitterDuo = matches.map((match) => ({
+      ...match,
+      submittedByDuoId: isActiveMember.has(`${challenge.challengerDuoId}:${match.submittedBy}`)
+        ? challenge.challengerDuoId
+        : challenge.challengedDuoId,
+    }));
+    return {
+      ...challenge,
+      match: withSubmitterDuo.find((m) => m.status !== "VOIDED") ?? null,
+      voidedMatches: withSubmitterDuo.filter((m) => m.status === "VOIDED"),
+    };
+  });
 }

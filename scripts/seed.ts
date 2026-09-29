@@ -4,10 +4,11 @@
  * deterministische UUID's i.p.v. gen_random_uuid(), zodat een tweede
  * run geen duplicaten oplevert.
  *
- * Maakt: 1 regio, 20 gebruikers, 10 actieve duo's met variërende, vaste
- * startratings (niet via matches berekend). Vier gebruikers (1, 3, 5, 7)
+ * Maakt: regio Utrecht met 20 gebruikers en 10 actieve duo's met variërende,
+ * vaste startratings (niet via matches berekend). Vier gebruikers (1, 3, 5, 7)
  * zitten bewust in twee duo's tegelijk, zodat multi-duo-gedrag (FR-1.4)
- * vanaf het begin zichtbaar is.
+ * vanaf het begin zichtbaar is. Daarnaast regio Zwolle (users 21-26, 3 duo's
+ * met geaccepteerde challenges) voor de walkover/opgave/uitstel-scenario's.
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -20,6 +21,11 @@ function seedId(category: number, index: number): string {
 }
 
 const REGION_ID = seedId(0, 1);
+// Tweede regio, uitsluitend voor de KNLTB-e2e-specs (09 walkover/opgave,
+// 10 uitstel). Een aparte regio houdt de Utrecht-ladder (01-ladder: precies
+// 10 rijen, Smash Sisters bovenaan) ongemoeid; "Zwolle" sorteert na
+// "Utrecht", dus de standaardregio op /ladder blijft Utrecht.
+const REGION_ZWOLLE_ID = seedId(0, 2);
 const userId = (n: number) => seedId(1, n);
 const duoId = (n: number) => seedId(2, n);
 const ADMIN_ID = seedId(3, 1);
@@ -394,7 +400,89 @@ async function main() {
     },
   });
 
-  console.log(`Seed klaar: 1 regio, 20 users, 1 admin, ${duoIds.length} actieve duo's.`);
+  // ---------------------------------------------------------------------
+  // 6) Regio Zwolle: drie duo's met elk een geaccepteerde, nog niet
+  //    gespeelde challenge — voor walkover, opgave en uitstel (e2e 09/10).
+  //    Users 21-26 (+ 27 zonder naam/duo); niet gebruikt door andere specs.
+  // ---------------------------------------------------------------------
+  const zwolle = await prisma.region.upsert({
+    where: { id: REGION_ZWOLLE_ID },
+    update: { name: "Zwolle", slug: "zwolle" },
+    create: { id: REGION_ZWOLLE_ID, name: "Zwolle", slug: "zwolle" },
+  });
+  // user27: bewust zonder weergavenaam en zonder duo (e2e 08-profiel:
+  // "stel je naam in"-melding en profielpagina).
+  const ZWOLLE_USERS: Array<[number, string | null]> = [
+    [21, "Tess Kuipers"],
+    [22, "Uriel Meijer"],
+    [23, "Vera Postma"],
+    [24, "Wout Schouten"],
+    [25, "Xena Willems"],
+    [26, "Youri Koster"],
+    [27, null],
+  ];
+  for (const [n, displayName] of ZWOLLE_USERS) {
+    await prisma.user.upsert({
+      where: { id: userId(n) },
+      update: { displayName },
+      create: {
+        id: userId(n),
+        email: `user${n}@example.com`,
+        displayName,
+        passwordHash,
+        role: "USER",
+        isActive: true,
+        activatedAt: new Date(),
+      },
+    });
+  }
+  const ZWOLLE_DUOS: Array<{ n: number; name: string; members: [number, number]; rating: number }> = [
+    { n: 11, name: "Lob Legends", members: [21, 22], rating: 1250 },
+    { n: 12, name: "Pared Pirates", members: [23, 24], rating: 1230 },
+    { n: 13, name: "Rebote Rebels", members: [25, 26], rating: 1210 },
+  ];
+  for (const duo of ZWOLLE_DUOS) {
+    const [a, b] = duo.members;
+    const data = {
+      name: duo.name,
+      regionId: zwolle.id,
+      memberPairKey: memberPairKey(userId(a), userId(b)),
+      isActive: true,
+      currentRating: duo.rating,
+    };
+    await prisma.duo.upsert({ where: { id: duoId(duo.n) }, update: data, create: { id: duoId(duo.n), ...data } });
+    duoIds.push(duoId(duo.n));
+  }
+  await prisma.duoMembership.deleteMany({ where: { duoId: { in: ZWOLLE_DUOS.map((d) => duoId(d.n)) } } });
+  for (const duo of ZWOLLE_DUOS) {
+    for (const member of duo.members) {
+      await prisma.duoMembership.create({ data: { userId: userId(member), duoId: duoId(duo.n) } });
+    }
+  }
+  const ZWOLLE_CHALLENGES: Array<{ n: number; challenger: number; challenged: number }> = [
+    { n: 6, challenger: 11, challenged: 12 }, // Lob Legends vs. Pared Pirates → walkover (e2e 09)
+    { n: 7, challenger: 12, challenged: 13 }, // Pared Pirates vs. Rebote Rebels → opgave (e2e 09)
+    { n: 8, challenger: 13, challenged: 11 }, // Rebote Rebels vs. Lob Legends → uitstel (e2e 10)
+  ];
+  for (const c of ZWOLLE_CHALLENGES) {
+    await prisma.challenge.upsert({
+      where: { id: challengeId(c.n) },
+      update: {},
+      create: {
+        id: challengeId(c.n),
+        challengerDuoId: duoId(c.challenger),
+        challengedDuoId: duoId(c.challenged),
+        status: "ACCEPTED",
+        createdAt: daysAgo(3),
+        responseDeadline: daysAgo(1),
+        respondedAt: daysAgo(2),
+        acceptedAt: daysAgo(2),
+        matchDeadline: daysFromNow(5),
+      },
+    });
+  }
+
+  console.log(`Seed klaar: 2 regio's, 27 users, 1 admin, ${duoIds.length} actieve duo's.`);
   console.log(
     "Demo-scenario user1@example.com: rating-historie, openstaande challenges, open dispute, openstaande duo-uitnodiging.",
   );

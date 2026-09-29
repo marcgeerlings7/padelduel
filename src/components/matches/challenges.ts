@@ -15,6 +15,14 @@ export type ChallengeMatch = {
   scoreRaw: string;
   /** User-id van de indiener. */
   submittedBy: string;
+  /** Duo namens wie de score is ingediend (zelfde regel als de server bij bevestigen). */
+  submittedByDuoId: string;
+  /** KNLTB-aanvullingen: walkover/opgave. scoreRaw is altijd de voltooide uitslag. */
+  resultType: "PLAYED" | "WALKOVER" | "RETIRED";
+  /** Kant die niet kwam (walkover) of opgaf (opgave); null bij een gewone uitslag. */
+  concedingSide: "CHALLENGER" | "CHALLENGED" | null;
+  /** Opgave: werkelijk gespeelde (onvolledige) stand, uitdager eerst. */
+  playedScoreRaw: string | null;
   submittedAt: string;
   confirmedAt: string | null;
   autoConfirmDeadline: string;
@@ -36,6 +44,20 @@ export type Challenge = {
   match: ChallengeMatch | null;
   voidedMatches: ChallengeMatch[];
   dispute: DisputeSummary | null;
+  /** Uitstelverzoeken, nieuwste eerst (status als Prisma-enumnaam). */
+  postponements: ChallengePostponementSummary[];
+};
+
+export type ChallengePostponementSummary = {
+  id: string;
+  requestedByDuoId: string;
+  requestedDays: number;
+  reason: string | null;
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "EXPIRED";
+  previousMatchDeadline: string | null;
+  newMatchDeadline: string | null;
+  createdAt: string;
+  respondedAt: string | null;
 };
 
 export type ChallengeGroup = "incoming" | "outgoing" | "toPlay" | "result" | "done";

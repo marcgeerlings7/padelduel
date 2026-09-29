@@ -10,7 +10,8 @@ import { getConfigNumber, getConfigNumberOrDefault } from "@/server/repositories
 
 export const metadata: Metadata = {
   title: "Uitleg · Padel Ladder",
-  description: "Hoe de ladder, tiers, uitdagingen, de ELO-rating, statistieken en geschillen werken.",
+  description:
+    "Hoe de ladder, tiers, uitdagingen, uitstel, walkovers, de ELO-rating, statistieken, geschillen en e-mailmeldingen werken.",
 };
 
 // De getallen komen live uit platform_config (nooit hardcoded), dus per request renderen.
@@ -30,6 +31,12 @@ type InfoConfig = {
   marginMin: number;
   marginMax: number;
   inactiveDays: number;
+  startRating: number;
+  postponementMaxDays: number;
+  postponementMaxPerChallenge: number;
+  reminderResponseHours: number;
+  reminderMatchHours: number;
+  reminderAutoConfirmHours: number;
 };
 
 async function loadConfig(): Promise<InfoConfig | null> {
@@ -48,6 +55,12 @@ async function loadConfig(): Promise<InfoConfig | null> {
       marginMin,
       marginMax,
       inactiveDays,
+      startRating,
+      postponementMaxDays,
+      postponementMaxPerChallenge,
+      reminderResponseHours,
+      reminderMatchHours,
+      reminderAutoConfirmHours,
     ] = await Promise.all([
       getConfigNumber("rating_tier_size"),
       getConfigNumber("max_active_duos_per_user"),
@@ -62,6 +75,12 @@ async function loadConfig(): Promise<InfoConfig | null> {
       getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.minMultiplier, DEFAULT_MARGIN_CONFIG.minMultiplier),
       getConfigNumberOrDefault(MARGIN_CONFIG_KEYS.maxMultiplier, DEFAULT_MARGIN_CONFIG.maxMultiplier),
       getConfigNumberOrDefault(INACTIVE_AFTER_DAYS_KEY, DEFAULT_INACTIVE_AFTER_DAYS),
+      getConfigNumber("default_start_rating"),
+      getConfigNumber("postponement_max_days"),
+      getConfigNumber("postponement_max_per_challenge"),
+      getConfigNumber("notification_response_deadline_lead_hours"),
+      getConfigNumber("notification_match_deadline_lead_hours"),
+      getConfigNumber("notification_auto_confirm_lead_hours"),
     ]);
     return {
       tierSize,
@@ -77,6 +96,12 @@ async function loadConfig(): Promise<InfoConfig | null> {
       marginMin,
       marginMax,
       inactiveDays,
+      startRating,
+      postponementMaxDays,
+      postponementMaxPerChallenge,
+      reminderResponseHours,
+      reminderMatchHours,
+      reminderAutoConfirmHours,
     };
   } catch (err) {
     console.error("Uitlegpagina: platform_config kon niet geladen worden", err);
@@ -85,7 +110,6 @@ async function loadConfig(): Promise<InfoConfig | null> {
 }
 
 const K = DEFAULT_K_FACTOR_CONFIG;
-const START_RATING = 1200;
 const RATING_CAP = 50;
 
 function fmt(value: number, digits = 2): string {
@@ -99,11 +123,13 @@ const TOC = [
   { id: "tiers", label: "Tiers" },
   { id: "uitdagen", label: "Uitdagen" },
   { id: "speelverplichting", label: "Speelverplichting" },
+  { id: "uitstel", label: "Uitstel" },
   { id: "uitslag", label: "Uitslag" },
   { id: "rating", label: "ELO-rating" },
   { id: "statistieken", label: "Statistieken" },
   { id: "geschillen", label: "Geschillen" },
   { id: "beschikbaarheid", label: "Beschikbaarheid" },
+  { id: "profiel", label: "Profiel en e-mail" },
   { id: "beheer", label: "Beheer" },
 ];
 
@@ -167,7 +193,7 @@ export default async function InfoPage() {
           Kerngetallen
         </h2>
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border shadow-card sm:grid-cols-3">
-          <KeyFigure label="Startrating nieuw duo" value={START_RATING} />
+          <KeyFigure label="Startrating eerste duo" value={c("startRating")} />
           <KeyFigure label="Breedte van een tier" value={c("tierSize")} unit="punten" />
           <KeyFigure label="Reageren op een uitdaging" value={c("responseDays")} unit={days(c("responseDays"))} />
           <KeyFigure label="Spelen na acceptatie" value={c("matchDays")} unit={days(c("matchDays"))} />
@@ -218,8 +244,8 @@ export default async function InfoPage() {
         lead={
           <>
             <p>
-              Je speelt altijd als duo. Je nodigt een partner uit met een voorstel (regio en duo-naam); zodra die
-              accepteert, staat het duo op de ladder met een startrating van <Num value={START_RATING} />.
+              Je speelt altijd als duo. Je nodigt een partner uit met een voorstel (regio en duo-naam, en optioneel het
+              speltype: heren, dames of gemengd); zodra die accepteert, staat het duo op de ladder.
             </p>
             <p>
               Met verschillende partners mag je in meerdere duo&apos;s tegelijk spelen, tot{" "}
@@ -229,6 +255,23 @@ export default async function InfoPage() {
           </>
         }
       >
+        <Details summary="Met welke rating begint een nieuw duo?">
+          <p>
+            De startrating is het gemiddelde van beide spelers. Voor elke speler telt het gemiddelde van de rating van
+            zijn of haar andere actieve duo&apos;s. Speelt iemand nog in geen enkel ander duo, dan telt voor die
+            speler de standaard startrating van <Num value={c("startRating")} />.
+          </p>
+          <BulletList>
+            <li>
+              Twee nieuwe spelers beginnen dus op <Num value={c("startRating")} />.
+            </li>
+            <li>
+              Speelt de één al in een duo met rating 1400 en is de ander nieuw, dan begint het nieuwe duo op het
+              gemiddelde van 1400 en <Num value={c("startRating")} />.
+            </li>
+            <li>De zelf opgegeven speelsterkte telt hier niet mee.</li>
+          </BulletList>
+        </Details>
         <Details summary="Ontbinden en opnieuw samen spelen">
           <BulletList>
             <li>Dezelfde twee spelers kunnen nooit twee actieve duo&apos;s tegelijk hebben.</li>
@@ -328,6 +371,37 @@ export default async function InfoPage() {
       </InfoSection>
 
       <InfoSection
+        id="uitstel"
+        title="Uitstel in onderling overleg"
+        lead={
+          <>
+            <p>
+              Lukt het niet om binnen de speeltermijn te spelen, bijvoorbeeld door een blessure? Vraag dan vanaf de
+              uitdaging uitstel aan: 1 tot en met <Num value={c("postponementMaxDays")} unit={days(c("postponementMaxDays"))} />.
+              Het andere duo moet akkoord geven; eenzijdig uitstel bestaat niet.
+            </p>
+            <p>
+              Gaat het andere duo akkoord, dan schuift de speeldeadline het gevraagde aantal dagen op. Wordt het
+              verzoek geweigerd of komt er geen antwoord vóór de deadline, dan blijft de gewone speelverplichting
+              gelden.
+            </p>
+          </>
+        }
+      >
+        <Details summary="De regels op een rij">
+          <BulletList>
+            <li>Uitstel kan alleen voor een geaccepteerde uitdaging, vóór de speeldeadline en zolang er nog geen uitslag is ingevuld.</li>
+            <li>Er staat steeds hooguit één verzoek open. Wie het verzoek deed, kan het intrekken zolang er nog niet op is gereageerd.</li>
+            <li>
+              Per uitdaging kan <Num value={c("postponementMaxPerChallenge")} unit="keer" /> uitstel
+              worden gegeven. Geweigerde en ingetrokken verzoeken tellen niet mee.
+            </li>
+            <li>De nieuwe deadline is de deadline op het moment van accepteren plus het gevraagde aantal dagen.</li>
+          </BulletList>
+        </Details>
+      </InfoSection>
+
+      <InfoSection
         id="uitslag"
         title="De uitslag doorgeven"
         lead={
@@ -346,6 +420,35 @@ export default async function InfoPage() {
               Een beslissende derde set mag een match-tiebreak zijn: tot minimaal 10 punten met 2 punten verschil
               (bijvoorbeeld 10-8 of 12-10).
             </li>
+          </BulletList>
+        </Details>
+        <Details summary="Walkover: de tegenstander kwam niet">
+          <p>
+            Kwam het andere duo niet opdagen, of zegde het vóór de start af? Dan meldt het duo dat er wél was een
+            walkover. Die telt als 6-0 6-0 en loopt via de gewone ratingberekening, dus inclusief het maximale
+            gamesaldo. Het is geen forfeit.
+          </p>
+          <p>
+            Het andere duo krijgt de melding net als een gewone uitslag ter bevestiging, en kan er een geschil over
+            openen.
+          </p>
+        </Details>
+        <Details summary="Opgave: een duo stopt tijdens de wedstrijd">
+          <p>
+            Geeft een duo op, bijvoorbeeld door een blessure, dan vul je de stand in op het moment van opgave en kies
+            je welk duo opgaf. Beide duo&apos;s kunnen dat doen. De gespeelde games blijven staan:
+          </p>
+          <BulletList>
+            <li>
+              De lopende set wordt afgemaakt in het voordeel van het duo dat doorspeelde: 6 games (7-5 of 7-6 als de
+              stand al 5-5 of 6-5 of 6-6 was).
+            </li>
+            <li>Nog niet gespeelde sets tellen als 6-0 voor dat duo.</li>
+            <li>
+              Voorbeeld: geeft de tegenstander op bij 6-4 2-3, dan wordt de uitslag 6-4 6-3 voor het duo dat doorspeelde. De werkelijke
+              stand blijft zichtbaar bij de wedstrijd.
+            </li>
+            <li>Stond de wedstrijd al vast, dan is het geen opgave: vul dan de gewone uitslag in.</li>
           </BulletList>
         </Details>
       </InfoSection>
@@ -558,6 +661,48 @@ export default async function InfoPage() {
           </>
         }
       />
+
+      <InfoSection
+        id="profiel"
+        title="Profiel en e-mailmeldingen"
+        lead={
+          <>
+            <p>
+              Op je{" "}
+              <Link href="/profile" className="font-semibold text-primary underline-offset-4 hover:underline">
+                profiel
+              </Link>{" "}
+              stel je je naam in: zo zien je partner en tegenstanders je. Je e-mailadres is nooit zichtbaar voor andere
+              spelers. Heb je nog geen naam ingesteld, dan zien anderen een neutrale naam als &ldquo;Speler 1A2B3C&rdquo;.
+            </p>
+            <p>
+              Je kunt er ook je KNLTB-speelsterkte (1 tot en met 9) invullen. Die is zelf opgegeven en geen officiële
+              KNLTB-rating: we controleren hem niet en hij telt niet mee voor je rating of voor wie je kunt uitdagen.
+            </p>
+          </>
+        }
+      >
+        <Details summary="Welke e-mails krijg je?">
+          <BulletList>
+            <li>Een nieuwe uitdaging voor je duo.</li>
+            <li>
+              Een herinnering als de reactietermijn van een uitdaging bijna afloopt (
+              <Num value={c("reminderResponseHours")} unit="uur" /> vooraf).
+            </li>
+            <li>
+              Een herinnering als de speeltermijn bijna afloopt en er nog geen uitslag is (
+              <Num value={c("reminderMatchHours")} unit="uur" /> vooraf).
+            </li>
+            <li>
+              Een uitslag die op jullie bevestiging wacht, plus een herinnering{" "}
+              <Num value={c("reminderAutoConfirmHours")} unit="uur" /> voordat hij automatisch definitief wordt.
+            </li>
+            <li>De afhandeling van een geschil door een beheerder.</li>
+            <li>Uitstelverzoeken en de antwoorden daarop.</li>
+          </BulletList>
+          <p>Elke soort zet je aan of uit op je profiel. Standaard staat alles aan.</p>
+        </Details>
+      </InfoSection>
 
       <InfoSection
         id="beheer"

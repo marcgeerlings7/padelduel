@@ -15,6 +15,9 @@ export default defineConfig({
   // Dev-server compileert routes on-demand; met de UI-kit (Tailwind v4,
   // shadcn, Motion, charts) duurt een eerste compile soms >30s.
   timeout: 60_000,
+  // Assertions wachten langer dan de standaard 5s: de eerste bezoek aan een
+  // route/API compileert on-demand in de dev-server.
+  expect: { timeout: 15_000 },
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:3100",
