@@ -64,7 +64,7 @@ test.describe("Challenge → Match → ELO (Epic E/F)", () => {
     // Rating van Bandeja Boys (winnaar) is gestegen, terug te zien in de geschiedenis
     await page13.goto("/dashboard");
     const bandejaCard = page13.locator("section", { hasText: "Bandeja Boys" });
-    await expect(bandejaCard).toContainText("rating 1"); // sanity: rating-tekst aanwezig
+    await expect(bandejaCard).toContainText(/rating\s*1\d{3}/i); // sanity: rating-tekst aanwezig
     await bandejaCard.getByRole("link", { name: "Ratinggeschiedenis" }).click();
     await expect(page13.getByText("Wedstrijdresultaat")).toBeVisible();
     const historyRow = page13.locator("tr", { hasText: "Wedstrijdresultaat" }).first();
