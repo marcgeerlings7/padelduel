@@ -41,10 +41,23 @@ export type RatingHistoryRow = {
   opponentName: string | null;
 };
 
+export type DuoCategory = "HEREN" | "DAMES" | "GEMENGD";
+
+export const DUO_CATEGORY_LABELS: Record<DuoCategory, string> = {
+  HEREN: "Heren",
+  DAMES: "Dames",
+  GEMENGD: "Gemengd",
+};
+
 export type Invitation = {
   id: string;
   duoName: string;
   regionId: string;
+  region: { id: string; name: string; slug: string } | null;
+  category: DuoCategory | null;
+  /** Publieke weergavenaam (nooit e-mail). */
+  proposedByName: string;
+  invitedUserName: string;
   proposedByUserId: string;
   invitedUserId: string;
   status: string;

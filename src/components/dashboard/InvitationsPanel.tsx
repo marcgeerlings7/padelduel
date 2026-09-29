@@ -4,6 +4,7 @@ import { DuoAvatar } from "@/components/app/DuoAvatar";
 import { SectionCard } from "@/components/app/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { invitationMeta } from "./invitation-meta";
 import type { InvitationsData } from "./types";
 
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" });
@@ -14,11 +15,9 @@ const dateFormatter = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: 
  */
 export function InvitationsPanel({
   data,
-  regionNames,
 }: {
   /** null = laden, "error" = mislukt. */
   data: InvitationsData | null | "error";
-  regionNames: ReadonlyMap<string, string>;
 }) {
   const received = data && data !== "error" ? data.received : [];
   const sent = data && data !== "error" ? data.sent : [];
@@ -64,8 +63,7 @@ export function InvitationsPanel({
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-semibold">{inv.duoName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {regionNames.get(inv.regionId) ?? "Regio onbekend"}, ontvangen{" "}
-                  {dateFormatter.format(new Date(inv.createdAt))}
+                  {invitationMeta(inv, "received")}, {dateFormatter.format(new Date(inv.createdAt))}
                 </span>
               </div>
               <Badge variant="warning">
@@ -80,8 +78,7 @@ export function InvitationsPanel({
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-semibold">{inv.duoName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {regionNames.get(inv.regionId) ?? "Regio onbekend"}, verstuurd{" "}
-                  {dateFormatter.format(new Date(inv.createdAt))}
+                  {invitationMeta(inv, "sent")}, {dateFormatter.format(new Date(inv.createdAt))}
                 </span>
               </div>
               <Badge variant="muted">

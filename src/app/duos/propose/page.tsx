@@ -10,11 +10,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DUO_CATEGORY_LABELS, type DuoCategory } from "@/components/dashboard/types";
 import { NativeSelect } from "@/components/ladder/NativeSelect";
+import { cn } from "@/lib/utils";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
 
 type Region = { id: string; name: string; slug: string };
+
+const CATEGORY_OPTIONS: { value: DuoCategory | ""; label: string }[] = [
+  { value: "", label: "Geen" },
+  ...(Object.keys(DUO_CATEGORY_LABELS) as DuoCategory[]).map((value) => ({
+    value,
+    label: DUO_CATEGORY_LABELS[value],
+  })),
+];
 
 export default function ProposeDuoPage() {
   const router = useRouter();
@@ -22,6 +32,7 @@ export default function ProposeDuoPage() {
   const [regionSlug, setRegionSlug] = useState("");
   const [invitedEmail, setInvitedEmail] = useState("");
   const [duoName, setDuoName] = useState("");
+  const [category, setCategory] = useState<DuoCategory | "">("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -68,11 +79,13 @@ export default function ProposeDuoPage() {
           regionSlug,
           invitedEmail,
           duoName: duoName.trim() || undefined,
+          category: category || undefined,
         }),
       });
       setSentTo(invitedEmail);
       setInvitedEmail("");
       setDuoName("");
+      setCategory("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Versturen is mislukt. Probeer het opnieuw.");
     } finally {
@@ -185,6 +198,37 @@ export default function ProposeDuoPage() {
             </Button>
           </div>
         </div>
+
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-sm leading-none font-medium">
+            Speltype <span className="font-normal text-muted-foreground">(optioneel)</span>
+          </legend>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {CATEGORY_OPTIONS.map((option) => (
+              <label
+                key={option.value || "none"}
+                className={cn(
+                  "flex h-10 cursor-pointer items-center justify-center rounded-md border px-2 text-sm font-semibold transition-colors",
+                  "has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                  category === option.value
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-input bg-card text-foreground hover:bg-accent",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="category"
+                  value={option.value}
+                  checked={category === option.value}
+                  onChange={() => setCategory(option.value)}
+                  className="sr-only"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Alleen ter info; het heeft geen invloed op wie je kunt uitdagen.</p>
+        </fieldset>
 
         {error ? (
           <div role="alert" className="rounded-lg border border-loss/30 bg-loss-soft px-3 py-2.5 text-sm text-loss">

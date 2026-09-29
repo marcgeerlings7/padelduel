@@ -3,7 +3,7 @@
 import { Check, Inbox, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DuoAvatar } from "@/components/app/DuoAvatar";
 import { EmptyState } from "@/components/app/EmptyState";
@@ -13,11 +13,10 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { SectionCard } from "@/components/app/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { invitationMeta } from "@/components/dashboard/invitation-meta";
 import type { InvitationsData } from "@/components/dashboard/types";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
-
-type Region = { id: string; name: string };
 
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "long" });
 
@@ -27,7 +26,6 @@ export default function InvitationsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [regions, setRegions] = useState<Region[]>([]);
 
   const reload = useCallback(() => {
     return apiFetch<InvitationsData>("/api/duos/invitations")
@@ -50,14 +48,7 @@ export default function InvitationsPage() {
       return;
     }
     reload();
-    apiFetch<Region[]>("/api/regions")
-      .then(setRegions)
-      .catch(() => {
-        /* alleen voor regionamen */
-      });
   }, [router, reload]);
-
-  const regionNames = useMemo(() => new Map(regions.map((r) => [r.id, r.name])), [regions]);
 
   async function respond(id: string, decision: "accept" | "decline") {
     setBusyId(id);
@@ -78,8 +69,6 @@ export default function InvitationsPage() {
       setBusyId(null);
     }
   }
-
-  const regionLabel = (regionId: string) => regionNames.get(regionId) ?? "Regio onbekend";
 
   return (
     <Page>
@@ -139,7 +128,7 @@ export default function InvitationsPage() {
                       <div className="flex min-w-0 flex-col">
                         <span className="truncate font-semibold">{inv.duoName}</span>
                         <span className="text-xs text-muted-foreground">
-                          {regionLabel(inv.regionId)}, ontvangen op {dateFormatter.format(new Date(inv.createdAt))}
+                          {invitationMeta(inv, "received")}. Ontvangen op {dateFormatter.format(new Date(inv.createdAt))}
                         </span>
                       </div>
                     </div>
@@ -192,7 +181,7 @@ export default function InvitationsPage() {
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate font-semibold">{inv.duoName}</span>
                       <span className="text-xs text-muted-foreground">
-                        {regionLabel(inv.regionId)}, verstuurd op {dateFormatter.format(new Date(inv.createdAt))}
+                        {invitationMeta(inv, "sent")}. Verstuurd op {dateFormatter.format(new Date(inv.createdAt))}
                       </span>
                     </div>
                     <Badge variant="muted">In afwachting</Badge>

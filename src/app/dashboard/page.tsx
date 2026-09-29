@@ -3,7 +3,7 @@
 import { Plus, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/app/EmptyState";
 import { Page } from "@/components/app/Page";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -15,15 +15,12 @@ import type { DashboardData, InvitationsData, RatingHistoryRow } from "@/compone
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { getStoredToken } from "@/lib/client/session";
 
-type Region = { id: string; name: string };
-
 export default function DashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [histories, setHistories] = useState<Record<string, HistoryState>>({});
   const [invitations, setInvitations] = useState<InvitationsData | null | "error">(null);
-  const [regions, setRegions] = useState<Region[]>([]);
 
   useEffect(() => {
     if (!getStoredToken()) {
@@ -56,18 +53,11 @@ export default function DashboardPage() {
       .then((inv) => !cancelled && setInvitations(inv))
       .catch(() => !cancelled && setInvitations("error"));
 
-    apiFetch<Region[]>("/api/regions")
-      .then((list) => !cancelled && setRegions(list))
-      .catch(() => {
-        /* alleen voor regionamen bij uitnodigingen */
-      });
 
     return () => {
       cancelled = true;
     };
   }, [router]);
-
-  const regionNames = useMemo(() => new Map(regions.map((r) => [r.id, r.name])), [regions]);
 
   const hasDuos = Boolean(data && data.duos.length > 0);
   const description = data
@@ -125,7 +115,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {data || error ? <InvitationsPanel data={invitations} regionNames={regionNames} /> : null}
+      {data || error ? <InvitationsPanel data={invitations} /> : null}
     </Page>
   );
 }
