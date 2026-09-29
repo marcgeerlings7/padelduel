@@ -6,7 +6,7 @@
     "dev": "next dev",
     "postinstall": "prisma generate",
     "build": "next build",
-    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy; fi && next build",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then DATABASE_URL=\"${DATABASE_URL_UNPOOLED:-$DATABASE_URL}\" prisma migrate deploy; fi && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
