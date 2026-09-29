@@ -1,44 +1,53 @@
 "use client";
 
+import { Users } from "lucide-react";
 import Link from "next/link";
-import { useMyDuos } from "@/lib/client/useMyDuos";
+import { EmptyState } from "@/components/app/EmptyState";
+import { StatGridSkeleton } from "@/components/app/LoadingSkeletons";
+import { Page } from "@/components/app/Page";
+import { PageHeader } from "@/components/app/PageHeader";
 import { DuoRatingHistoryView } from "@/components/duo/DuoRatingHistoryView";
+import { DuoSwitcher } from "@/components/matches/DuoSwitcher";
+import { useOwnDuos } from "@/components/matches/useOwnDuos";
+import { Button } from "@/components/ui/button";
 
 export default function RatingHistoryPage() {
-  const { duos, selectedId, setSelectedId, error } = useMyDuos();
+  const { duos, selectedId, setSelectedId, error } = useOwnDuos();
+  const selected = duos?.find((d) => d.id === selectedId) ?? null;
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-8 sm:px-8">
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
-        Ratinggeschiedenis
-      </h1>
-      <div className="hr" style={{ margin: 0 }} />
+    <Page>
+      <PageHeader
+        title="Ratinggeschiedenis"
+        description="Hoe de rating van jullie duo zich ontwikkelt, wedstrijd na wedstrijd."
+      />
 
-      {error && <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{error}</p>}
-
-      {duos && duos.length === 0 && (
-        <div className="card">
-          <p style={{ margin: "0 0 12px" }}>Je bent nog geen lid van een actief duo.</p>
-          <Link href="/duos/propose" className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-            Vorm een duo
-          </Link>
+      {error ? (
+        <div role="alert" className="rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">
+          {error}
         </div>
-      )}
+      ) : null}
 
-      {duos && duos.length > 1 && (
-        <div className="field" style={{ maxWidth: 320 }}>
-          <label>Duo</label>
-          <select className="input" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-            {duos.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {!duos && !error ? <StatGridSkeleton count={4} className="grid grid-cols-2 gap-3 lg:grid-cols-4" /> : null}
 
-      {selectedId && <DuoRatingHistoryView duoId={selectedId} />}
-    </main>
+      {duos && duos.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="Je hebt nog geen actief duo"
+          description="Een rating hoort bij een duo. Vorm eerst een duo met je padelpartner."
+          action={
+            <Button asChild>
+              <Link href="/duos/propose">Vorm een duo</Link>
+            </Button>
+          }
+        />
+      ) : null}
+
+      {duos && duos.length > 1 ? <DuoSwitcher duos={duos} value={selectedId} onChange={setSelectedId} /> : null}
+
+      {selected ? (
+        <DuoRatingHistoryView key={selected.id} duoId={selected.id} regionSlug={selected.region.slug} />
+      ) : null}
+    </Page>
   );
 }
