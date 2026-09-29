@@ -1,48 +1,50 @@
 "use client";
 
+import { Users } from "lucide-react";
 import Link from "next/link";
-import { useMyDuos } from "@/lib/client/useMyDuos";
+import { EmptyState } from "@/components/app/EmptyState";
+import { CardSkeleton } from "@/components/app/LoadingSkeletons";
+import { Page } from "@/components/app/Page";
+import { PageHeader } from "@/components/app/PageHeader";
+import { DuoPicker } from "@/components/availability/DuoPicker";
+import { AVAILABILITY_DESCRIPTION } from "@/components/availability/copy";
 import { DuoAvailabilityView } from "@/components/duo/DuoAvailabilityView";
+import { Button } from "@/components/ui/button";
+import { useMyDuos } from "@/lib/client/useMyDuos";
 
 export default function AvailabilityPage() {
   const { duos, selectedId, setSelectedId, error } = useMyDuos();
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-8 sm:px-8">
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 800, fontSize: "clamp(28px,3.5vw,40px)", margin: 0 }}>
-        Beschikbaarheid
-      </h1>
-      <p style={{ color: "var(--color-neutral-700)", fontSize: 14, margin: 0, maxWidth: "60ch" }}>
-        Zichtbaar voor tegenstanders om een wedstrijd in te plannen. Alleen duo-naam, regio en tijdsblok
-        worden gedeeld — nooit je e-mailadres of gebruikers-id.
-      </p>
-      <div className="hr" style={{ margin: 0 }} />
+    <Page>
+      <PageHeader title="Beschikbaarheid" description={AVAILABILITY_DESCRIPTION} />
 
-      {error && <p style={{ fontSize: 14, color: "var(--color-accent-700)" }}>{error}</p>}
-
-      {duos && duos.length === 0 && (
-        <div className="card">
-          <p style={{ margin: "0 0 12px" }}>Je bent nog geen lid van een actief duo.</p>
-          <Link href="/duos/propose" className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-            Vorm een duo
-          </Link>
+      {error ? (
+        <div role="alert" className="rounded-lg border border-loss/30 bg-loss-soft px-4 py-3 text-sm text-loss">
+          {error} Vernieuw de pagina om het opnieuw te proberen.
         </div>
-      )}
+      ) : null}
 
-      {duos && duos.length > 1 && (
-        <div className="field" style={{ maxWidth: 320 }}>
-          <label>Duo</label>
-          <select className="input" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-            {duos.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {!duos && !error ? <CardSkeleton lines={6} label="Duo's laden" /> : null}
 
-      {selectedId && <DuoAvailabilityView duoId={selectedId} />}
-    </main>
+      {duos && duos.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="Je bent nog geen lid van een actief duo"
+          description="Beschikbaarheid hoort bij een duo. Vorm eerst een duo met je padelpartner."
+          action={
+            <Button asChild>
+              <Link href="/duos/propose">Vorm een duo</Link>
+            </Button>
+          }
+        />
+      ) : null}
+
+      {duos && duos.length > 1 ? (
+        <DuoPicker duos={duos} selectedId={selectedId} onSelect={setSelectedId} />
+      ) : null}
+
+      {selectedId ? <DuoAvailabilityView key={selectedId} duoId={selectedId} /> : null}
+    </Page>
   );
 }

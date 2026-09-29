@@ -47,6 +47,7 @@ test.describe("Beschikbaarheid & externe API (Epic H)", () => {
 
     // Admin trekt de client in; de key werkt daarna niet meer
     await pageAdmin.getByRole("button", { name: "Intrekken" }).click();
+    await pageAdmin.getByRole("button", { name: "Definitief intrekken" }).click();
     await expect(pageAdmin.getByText("ingetrokken")).toBeVisible();
     const afterRevoke = await pageAdmin.request.get("/api/v1/availability", {
       headers: { "x-api-key": apiKey },
@@ -74,6 +75,8 @@ test.describe("Beschikbaarheid & externe API (Epic H)", () => {
 
     // user12 voegt een vrij, niet-terugkerend blok toe
     await page12.goto(DUO_AVAILABILITY);
+    // Het toevoegformulier staat in een sheet (bottom sheet op mobiel).
+    await page12.getByRole("button", { name: "Tijdsblok toevoegen", exact: true }).click();
     const addForm = page12.locator("form", { has: page12.getByRole("button", { name: "Toevoegen" }) });
     await addForm.getByLabel("Dag").selectOption({ label: "Woensdag" });
     await addForm.getByLabel("Van").fill("19:30");
