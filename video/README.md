@@ -13,6 +13,7 @@ cd video
 npm install
 npm run studio   # live bewerken in de browser
 npm run render   # → out/padelduel-uitleg-v2.mp4 (v1: npm run render:v1)
+# Laatste renders staan in renders/ (v1 en v2).
 npm run music    # muziek opnieuw genereren (python3 + numpy + scipy)
 ```
 
