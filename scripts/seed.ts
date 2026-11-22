@@ -8,7 +8,8 @@
  * vaste startratings (niet via matches berekend). Vier gebruikers (1, 3, 5, 7)
  * zitten bewust in twee duo's tegelijk, zodat multi-duo-gedrag (FR-1.4)
  * vanaf het begin zichtbaar is. Daarnaast regio Zwolle (users 21-26, 3 duo's
- * met geaccepteerde challenges) voor de walkover/opgave/uitstel-scenario's.
+ * met geaccepteerde challenges) voor de walkover/opgave/uitstel-scenario's,
+ * plus users 28-37 / duo's 14-18 voor startrating & plaatsing (e2e 11).
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -482,7 +483,70 @@ async function main() {
     });
   }
 
-  console.log(`Seed klaar: 2 regio's, 27 users, 1 admin, ${duoIds.length} actieve duo's.`);
+  // ---------------------------------------------------------------------
+  // 7) Startrating & plaatsing (akkoord PO 2026-11-22, e2e 11). Regio Zwolle,
+  //    users 28-37, duo's 14-18; niet gebruikt door andere specs.
+  //    - Nieuw Talent (28/29): 1200, 0 wedstrijden → plaatsingsperiode, mag
+  //      Top Toppers (tier 14) uitdagen, Te Ver Weg (tier 15) niet.
+  //    - Late Bloeiers (32/33) en Stille Kracht (34/35): ongespeeld, zonder
+  //      challenges, met speelsterktes → herberekenen + verificatie.
+  // ---------------------------------------------------------------------
+  const PLACEMENT_USERS: Array<[number, string, number | null]> = [
+    [28, "Zara Nieuwenhuis", null],
+    [29, "Abel Vonk", null],
+    [30, "Bente Hoog", null],
+    [31, "Cas Boven", null],
+    [32, "Wilma Sterk", 1],
+    [33, "Dirk Laat", null],
+    [34, "Elif Stil", 5],
+    [35, "Gijs Kracht", null],
+    [36, "Hanna Ver", null],
+    [37, "Ivo Weg", null],
+  ];
+  for (const [n, displayName, knltbLevel] of PLACEMENT_USERS) {
+    const data = { displayName, knltbLevel, knltbLevelVerifiedAt: null, knltbVerificationRequestedAt: null };
+    await prisma.user.upsert({
+      where: { id: userId(n) },
+      update: data,
+      create: {
+        id: userId(n),
+        email: `user${n}@example.com`,
+        passwordHash,
+        role: "USER",
+        isActive: true,
+        activatedAt: new Date(),
+        ...data,
+      },
+    });
+  }
+  const PLACEMENT_DUOS: Array<{ n: number; name: string; members: [number, number]; rating: number; played: number }> = [
+    { n: 14, name: "Nieuw Talent", members: [28, 29], rating: 1200, played: 0 },
+    { n: 15, name: "Top Toppers", members: [30, 31], rating: 1420, played: 12 },
+    { n: 16, name: "Te Ver Weg", members: [36, 37], rating: 1510, played: 12 },
+    { n: 17, name: "Late Bloeiers", members: [32, 33], rating: 1200, played: 0 },
+    { n: 18, name: "Stille Kracht", members: [34, 35], rating: 1200, played: 0 },
+  ];
+  for (const duo of PLACEMENT_DUOS) {
+    const [a, b] = duo.members;
+    const data = {
+      name: duo.name,
+      regionId: zwolle.id,
+      memberPairKey: memberPairKey(userId(a), userId(b)),
+      isActive: true,
+      currentRating: duo.rating,
+      matchesPlayed: duo.played,
+    };
+    await prisma.duo.upsert({ where: { id: duoId(duo.n) }, update: data, create: { id: duoId(duo.n), ...data } });
+    duoIds.push(duoId(duo.n));
+  }
+  await prisma.duoMembership.deleteMany({ where: { duoId: { in: PLACEMENT_DUOS.map((d) => duoId(d.n)) } } });
+  for (const duo of PLACEMENT_DUOS) {
+    for (const member of duo.members) {
+      await prisma.duoMembership.create({ data: { userId: userId(member), duoId: duoId(duo.n) } });
+    }
+  }
+
+  console.log(`Seed klaar: 2 regio's, 37 users, 1 admin, ${duoIds.length} actieve duo's.`);
   console.log(
     "Demo-scenario user1@example.com: rating-historie, openstaande challenges, open dispute, openstaande duo-uitnodiging.",
   );

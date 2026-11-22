@@ -17,7 +17,15 @@ import { getStoredToken } from "@/lib/client/session";
 
 type Region = { id: string; name: string; slug: string };
 type LadderResponse = { region: Region; ladder: LadderRow[]; tierSize: number };
-type MyDuo = { id: string; name: string; regionId: string; tier: number };
+type MyDuo = {
+  id: string;
+  name: string;
+  regionId: string;
+  tier: number;
+  /** Plaatsingsperiode (akkoord PO 2026-11-22): tier-bereik dat dit duo mag uitdagen. */
+  challengeableTiers: { min: number; max: number };
+  placementMatchesLeft: number;
+};
 type ChallengeSummary = { status: string };
 
 export default function LadderPage() {
@@ -123,7 +131,14 @@ export default function LadderPage() {
   const actingDuo = myDuosInRegion.find((d) => d.id === actingDuoId) ?? null;
   const actingEntry = (actingDuo && ladder?.find((e) => e.id === actingDuo.id)) || null;
   const challengeableCount =
-    actingDuo && ladder ? ladder.filter((e) => e.tier === actingDuo.tier && !ownDuoIds.has(e.id)).length : 0;
+    actingDuo && ladder
+      ? ladder.filter(
+          (e) =>
+            e.tier >= actingDuo.challengeableTiers.min &&
+            e.tier <= actingDuo.challengeableTiers.max &&
+            !ownDuoIds.has(e.id),
+        ).length
+      : 0;
 
   async function handleChallenge(challengedDuoId: string, challengedName: string) {
     if (!actingDuoId) return;
@@ -151,7 +166,7 @@ export default function LadderPage() {
         ? `Nog geen actieve duo's in ${selectedRegion.name}.`
         : `${ladder.length} ${ladder.length === 1 ? "duo" : "duo's"} in ${selectedRegion.name}, verdeeld over ${tierCount} ${
             tierCount === 1 ? "tier" : "tiers"
-          }${tierSize ? ` van ${tierSize} punten` : ""}. Uitdagen kan binnen je eigen tier.`
+          }${tierSize ? ` van ${tierSize} punten` : ""}. Uitdagen kan binnen je eigen tier (nieuwe duo's ook hoger).`
       : "De ranglijst van je regio, op rating.";
 
   const loadingOwnState = loggedIn === null || (loggedIn && myDuos === null);
@@ -199,6 +214,8 @@ export default function LadderPage() {
           entry={actingEntry}
           ladderSize={ladder?.length ?? 0}
           challengeableCount={challengeableCount}
+          challengeableTiers={actingDuo.challengeableTiers}
+          placementMatchesLeft={actingDuo.placementMatchesLeft}
           busy={actingDuoBusy}
         />
       ) : !loggedIn ? (
@@ -280,7 +297,9 @@ export default function LadderPage() {
           ownDuoIds={ownDuoIds}
           regionName={selectedRegion?.name ?? ""}
           challenge={{
-            actingDuo: actingDuo ? { id: actingDuo.id, tier: actingDuo.tier } : null,
+            actingDuo: actingDuo
+              ? { id: actingDuo.id, tier: actingDuo.tier, maxTier: actingDuo.challengeableTiers.max }
+              : null,
             busy: actingDuoBusy,
             pendingId: challengingId,
             onChallenge: handleChallenge,

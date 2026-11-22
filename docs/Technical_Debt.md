@@ -430,3 +430,26 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 **Seed:** extra regio Zwolle (users 21–27, drie duo's met geaccepteerde challenges) uitsluitend voor e2e 08–10; de Utrecht-ladder blijft ongewijzigd.
 **Tests:** e2e 08 (profiel), 09 (walkover + opgave), 10 (uitstel) toegevoegd; volledige suite 16/16 groen. Assertion-timeout in Playwright naar 15s (on-demand compile in de dev-server); registratieformulier kreeg `noValidate` zodat de eigen Nederlandse validatie i.p.v. de browserpopup verschijnt.
 **Restpunt:** bestaande accounts zonder naam zien een neutrale fallback ("Speler XXXXXX") tot ze er een instellen; er is geen dwang.
+
+---
+
+## Startrating & plaatsing (akkoord PO 2026-11-22)
+
+**Wat:** de vier lagen uit `docs/Advies_Startrating.md`.
+- **A — speelsterktebonus:** spelers zonder gespeeld duo starten op `default_start_rating` + `(9 − speelsterkte) × start_rating_level_step`, begrensd op `start_rating_unverified_max_bonus`. Alleen omhoog. Andere duo's tellen alleen mee als ze al gespeeld hebben (`matchesPlayed > 0`) — **gedragswijziging**: voorheen telde elk actief duo.
+- **B — plaatsingsperiode:** < `placement_max_matches` wedstrijden → tot `placement_challenge_tiers_up` tiers hoger uitdagen (server: `proposeChallenge`; UI: `GET /api/duos/mine` levert `challengeableTiers` + `placementMatchesLeft`, ladder toont "Plaatsing").
+- **C — verificatie:** speler vraagt aan (`POST /api/me/profile/verification`), admin keurt goed/af op `/admin/start-ratings` (`GET /api/admin/start-ratings`, `POST /api/admin/start-ratings/verifications/[userId]`). Plafond wordt dan `start_rating_verified_max_bonus`. Een gewijzigde speelsterkte wist verificatie + aanvraag. Audit-log `knltb_level_verified` / `knltb_level_verification_rejected`.
+- **D — herberekenen:** `POST /api/admin/start-ratings/recalculate` `{ regionId }` en automatisch na goedkeuring (alleen de duo's van die speler). Alleen duo's met 0 wedstrijden, zonder rating-historie en zonder enige challenge; row lock + audit-log `start_ratings_recalculated`; geen RatingHistory-rij.
+
+**Schema (in overleg/akkoord):** `app_user.knltb_level_verified_at`, `knltb_level_verified_by` (FK, ON DELETE SET NULL), `knltb_verification_requested_at` + index; vijf `platform_config`-rijen. Migratie `20261122120000_start_rating_placement_verification`. Code valt terug op defaults als de config-rijen ontbreken.
+
+**API-wijziging:** `MyProfile.knltbLevelIsSelfDeclared` vervangen door `knltbVerification: "none" | "requested" | "verified"`.
+
+**Bewuste keuzes / restrisico's:**
+- Geen schermafbeelding-upload en geen bondsnummer: de admin vraagt het bewijs per e-mail op en bewaart het niet (dataminimalisatie). Daardoor is verificatie handwerk; bij veel aanvragen is dat een knelpunt.
+- Goedkeuren en herberekenen zijn twee stappen (herberekening ná de commit); faalt de herberekening, dan staat de verificatie wel en kan de admin per regio herberekenen.
+- Bestaande duo's met < 10 wedstrijden vallen na de deploy ook in de plaatsingsperiode (ook in productie). Gewenst, maar het hogere duo kan meer uitdagingen van onderaf krijgen; weigeren is gratis.
+- Overschatten (ongeverifieerd) levert max. +200 op en wordt door de provisional K snel gecorrigeerd; de punten die het overschatte duo verliest gaan naar de tegenstanders (kleine inflatie, eenmalig per duo).
+- Geen KNLTB-API-koppeling: er is geen publieke API; partnerverzoek is een open actie voor de PO.
+
+**Tests:** unit (startbonus, plaatsing, services, verificatie, herberekening) → 542 groen; e2e `11-start-rating-placement` (plaatsing omhoog uitdagen, regio herberekenen, verificatie end-to-end) → volledige suite 19/19 groen. Seed: Zwolle users 28–37, duo's 14–18 (alleen e2e 11).

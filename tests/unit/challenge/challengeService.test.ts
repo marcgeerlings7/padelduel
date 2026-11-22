@@ -40,6 +40,7 @@ vi.mock("@/server/services/notificationService", () => ({
 }));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
+  getConfigNumberOrDefault: async (_key: string, defaultValue: number) => defaultValue,
 }));
 
 const {
@@ -57,12 +58,16 @@ const CONFIG = {
   forfeit_cooldown_days: 3,
 };
 
-function duo(overrides: Partial<{ id: string; regionId: string; currentRating: number; isActive: boolean }> = {}) {
+function duo(
+  overrides: Partial<{ id: string; regionId: string; currentRating: number; isActive: boolean; matchesPlayed: number }> = {},
+) {
   return {
     id: "duo-1",
     regionId: "region-1",
     currentRating: 1200,
     isActive: true,
+    // Standaard buiten de plaatsingsperiode (FR-4.2-gedrag).
+    matchesPlayed: 10,
     ...overrides,
   };
 }
@@ -132,6 +137,41 @@ describe("proposeChallenge", () => {
 
     await expect(proposeChallenge("duo-a", "duo-b", "user-1")).rejects.toMatchObject({
       code: "different_tier",
+    });
+  });
+
+  it("plaatsingsperiode (laag B): een nieuw duo mag tot 2 tiers hoger uitdagen", async () => {
+    mockPrisma.duo.findUnique
+      .mockResolvedValueOnce(duo({ id: "duo-a", currentRating: 1200, matchesPlayed: 0 }))
+      .mockResolvedValueOnce(duo({ id: "duo-b", currentRating: 1450 }));
+    mockPrisma.challenge.create.mockResolvedValueOnce({ id: "challenge-up" });
+    await expect(proposeChallenge("duo-a", "duo-b", "user-1")).resolves.toEqual({ id: "challenge-up" });
+  });
+
+  it("plaatsingsperiode: niet meer dan 2 tiers hoger, met een duidelijke melding", async () => {
+    mockPrisma.duo.findUnique
+      .mockResolvedValueOnce(duo({ id: "duo-a", currentRating: 1200, matchesPlayed: 9 }))
+      .mockResolvedValueOnce(duo({ id: "duo-b", currentRating: 1500 }));
+    await expect(proposeChallenge("duo-a", "duo-b", "user-1")).rejects.toMatchObject({
+      code: "different_tier",
+      message: expect.stringContaining("plaatsingsperiode"),
+    });
+  });
+
+  it("plaatsingsperiode: omlaag uitdagen blijft verboden", async () => {
+    mockPrisma.duo.findUnique
+      .mockResolvedValueOnce(duo({ id: "duo-a", currentRating: 1300, matchesPlayed: 0 }))
+      .mockResolvedValueOnce(duo({ id: "duo-b", currentRating: 1250 }));
+    await expect(proposeChallenge("duo-a", "duo-b", "user-1")).rejects.toMatchObject({ code: "different_tier" });
+  });
+
+  it("na de plaatsingsperiode: hoger uitdagen geweigerd", async () => {
+    mockPrisma.duo.findUnique
+      .mockResolvedValueOnce(duo({ id: "duo-a", currentRating: 1200, matchesPlayed: 10 }))
+      .mockResolvedValueOnce(duo({ id: "duo-b", currentRating: 1350 }));
+    await expect(proposeChallenge("duo-a", "duo-b", "user-1")).rejects.toMatchObject({
+      code: "different_tier",
+      message: "Je kunt alleen duo's binnen jouw rating-tier uitdagen.",
     });
   });
 

@@ -3,7 +3,9 @@ import { buildPairKey } from "@/lib/duo/pairKey";
 import { generateDuoName } from "@/lib/duo/nameGenerator";
 import { getTier } from "@/lib/elo";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
-import { computeStartRating } from "@/lib/duo/startRating";
+import { computeDuoStartRating } from "@/lib/duo/startRating";
+import { getPlacementConfig, getStartRatingConfig, playerStartInput } from "@/server/services/startRatingService";
+import { challengeableTierRange, placementMatchesLeft } from "@/lib/challenge/placement";
 import { publicDisplayName } from "@/lib/profile/displayName";
 import { getLadderPositions } from "@/server/services/ladderService";
 import type { DuoCategoryName } from "@/lib/duo/validation";
@@ -163,25 +165,20 @@ export async function respondToInvitation(
     throw new DuoError("Jullie hebben al een actief duo samen.", "duo_already_active", 400);
   }
 
-  const defaultStartRating = await getConfigNumber("default_start_rating");
+  const startRatingConfig = await getStartRatingConfig();
 
   try {
     const duo = await prisma.$transaction(async (tx) => {
-      // KNLTB-aanvullingen: startrating = gemiddelde van beide spelers, elk
-      // op basis van hun ANDERE actieve duo's (of default_start_rating).
-      // Binnen de transactie gelezen, vlak vóór het aanmaken van het duo.
-      const ratingsOf = async (userId: string) =>
-        (
-          await tx.duo.findMany({
-            where: { isActive: true, memberships: { some: { userId, leftAt: null } } },
-            select: { currentRating: true },
-          })
-        ).map((d) => d.currentRating);
-      const [playerARatings, playerBRatings] = await Promise.all([
-        ratingsOf(invitation.proposedByUserId),
-        ratingsOf(invitation.invitedUserId),
+      // Startrating = gemiddelde van beide spelers: per speler het gemiddelde
+      // van zijn/haar ANDERE gespeelde actieve duo's, of default_start_rating
+      // + een begrensde bonus op de (geverifieerde) speelsterkte (lagen A/C,
+      // akkoord PO 2026-11-22). Binnen de transactie gelezen, vlak vóór het
+      // aanmaken van het duo.
+      const [playerA, playerB] = await Promise.all([
+        playerStartInput(tx, invitation.proposedByUserId),
+        playerStartInput(tx, invitation.invitedUserId),
       ]);
-      const startRating = computeStartRating({ playerARatings, playerBRatings, defaultRating: defaultStartRating });
+      const startRating = computeDuoStartRating(playerA, playerB, startRatingConfig);
 
       const createdDuo = await tx.duo.create({
         data: {
@@ -262,13 +259,14 @@ export async function dissolveDuo(
 }
 
 export async function listMyDuos(userId: string) {
-  const [duos, tierSize] = await Promise.all([
+  const [duos, tierSize, placementConfig] = await Promise.all([
     prisma.duo.findMany({
       where: { isActive: true, memberships: { some: { userId, leftAt: null } } },
       include: { region: true },
       orderBy: { createdAt: "asc" },
     }),
     getConfigNumber("rating_tier_size"),
+    getPlacementConfig(),
   ]);
   // Ladderpositie is altijd afgeleid (RANK-query); één query per regio,
   // ook als de gebruiker meerdere duo's in dezelfde regio heeft.
@@ -279,9 +277,14 @@ export async function listMyDuos(userId: string) {
   return duos.map((duo) => {
     const ladder = ladders.get(duo.regionId) ?? [];
     const entry = ladder.find((row) => row.id === duo.id);
+    const tier = getTier(duo.currentRating, tierSize);
     return {
       ...duo,
-      tier: getTier(duo.currentRating, tierSize),
+      tier,
+      /** Inclusief tier-bereik dat dit duo mag uitdagen (plaatsingsperiode: ook hoger). */
+      challengeableTiers: challengeableTierRange(tier, duo.matchesPlayed, placementConfig),
+      /** Resterende plaatsingswedstrijden (0 = plaatsing afgerond of uitgeschakeld). */
+      placementMatchesLeft: placementConfig.tiersUp > 0 ? placementMatchesLeft(duo.matchesPlayed, placementConfig) : 0,
       /** platform_config.rating_tier_size, voor tier-grenzen in grafieken. */
       tierSize,
       /** Afgeleide ladderpositie in de eigen regio (null als het duo er onverwacht niet in staat). */

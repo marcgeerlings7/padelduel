@@ -35,6 +35,7 @@ const mockGetConfigNumber = vi.fn();
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("@/server/repositories/platformConfigRepository", () => ({
   getConfigNumber: mockGetConfigNumber,
+  getConfigNumberOrDefault: async (_key: string, defaultValue: number) => defaultValue,
 }));
 
 const mockGetLadderPositions = vi.fn();
@@ -347,8 +348,8 @@ describe("listMyDuos", () => {
       throw new Error(`onverwachte config-key in test: ${key}`);
     });
     mockPrisma.duo.findMany.mockResolvedValueOnce([
-      { id: "duo-a", regionId: "r1", currentRating: 1250 },
-      { id: "duo-b", regionId: "r1", currentRating: 1180 },
+      { id: "duo-a", regionId: "r1", currentRating: 1250, matchesPlayed: 3 },
+      { id: "duo-b", regionId: "r1", currentRating: 1180, matchesPlayed: 12 },
     ] as never);
     mockGetLadderPositions.mockResolvedValueOnce([
       { id: "duo-x", position: 1 },
@@ -362,6 +363,11 @@ describe("listMyDuos", () => {
     expect(result.map((d) => [d.id, d.tier, d.tierSize, d.position, d.ladderSize])).toEqual([
       ["duo-a", 12, 100, 2, 3],
       ["duo-b", 11, 100, 3, 3],
+    ]);
+    // Plaatsingsperiode (laag B): duo-a (3 gespeeld) mag tot 2 tiers hoger, duo-b niet meer.
+    expect(result.map((d) => [d.challengeableTiers, d.placementMatchesLeft])).toEqual([
+      [{ min: 12, max: 14 }, 7],
+      [{ min: 11, max: 11 }, 0],
     ]);
   });
 });

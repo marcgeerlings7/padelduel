@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Trophy,
   UserCog,
+  Gauge,
   UserRound,
   Users,
   type LucideIcon,
@@ -54,6 +55,7 @@ const ADMIN_LINKS: NavLink[] = [
   { href: "/admin/api-clients", label: "API-clients", icon: KeyRound },
   { href: "/admin/platform-config", label: "Platform config", icon: SlidersHorizontal },
   { href: "/admin/users", label: "Gebruikers", icon: UserCog },
+  { href: "/admin/start-ratings", label: "Startratings", icon: Gauge },
 ];
 
 /** Tabs die op mobiel direct in de onderbalk staan; de rest zit onder "Meer". */
