@@ -7,6 +7,7 @@ import { applyMatchResult, DEFAULT_K_FACTOR_CONFIG, DEFAULT_MARGIN_CONFIG, MARGI
 import { DEFAULT_INACTIVE_AFTER_DAYS, INACTIVE_AFTER_DAYS_KEY } from "@/lib/stats/activity";
 import { summarizeScore } from "@/lib/match/score";
 import { getConfigNumber, getConfigNumberOrDefault } from "@/server/repositories/platformConfigRepository";
+import { getPlacementConfig, getStartRatingConfig } from "@/server/services/startRatingService";
 
 export const metadata: Metadata = {
   title: "Uitleg · Padel Ladder",
@@ -37,6 +38,11 @@ type InfoConfig = {
   reminderResponseHours: number;
   reminderMatchHours: number;
   reminderAutoConfirmHours: number;
+  levelStep: number;
+  unverifiedMaxBonus: number;
+  verifiedMaxBonus: number;
+  placementMatches: number;
+  placementTiersUp: number;
 };
 
 async function loadConfig(): Promise<InfoConfig | null> {
@@ -61,6 +67,8 @@ async function loadConfig(): Promise<InfoConfig | null> {
       reminderResponseHours,
       reminderMatchHours,
       reminderAutoConfirmHours,
+      startRatingConfig,
+      placementConfig,
     ] = await Promise.all([
       getConfigNumber("rating_tier_size"),
       getConfigNumber("max_active_duos_per_user"),
@@ -81,6 +89,8 @@ async function loadConfig(): Promise<InfoConfig | null> {
       getConfigNumber("notification_response_deadline_lead_hours"),
       getConfigNumber("notification_match_deadline_lead_hours"),
       getConfigNumber("notification_auto_confirm_lead_hours"),
+      getStartRatingConfig(),
+      getPlacementConfig(),
     ]);
     return {
       tierSize,
@@ -102,6 +112,11 @@ async function loadConfig(): Promise<InfoConfig | null> {
       reminderResponseHours,
       reminderMatchHours,
       reminderAutoConfirmHours,
+      levelStep: startRatingConfig.levelStep,
+      unverifiedMaxBonus: startRatingConfig.unverifiedMaxBonus,
+      verifiedMaxBonus: startRatingConfig.verifiedMaxBonus,
+      placementMatches: placementConfig.maxMatches,
+      placementTiersUp: placementConfig.tiersUp,
     };
   } catch (err) {
     console.error("Uitlegpagina: platform_config kon niet geladen worden", err);
@@ -258,8 +273,9 @@ export default async function InfoPage() {
         <Details summary="Met welke rating begint een nieuw duo?">
           <p>
             De startrating is het gemiddelde van beide spelers. Voor elke speler telt het gemiddelde van de rating van
-            zijn of haar andere actieve duo&apos;s. Speelt iemand nog in geen enkel ander duo, dan telt voor die
-            speler de standaard startrating van <Num value={c("startRating")} />.
+            zijn of haar andere actieve duo&apos;s die al gespeeld hebben. Heeft iemand nog geen gespeeld duo, dan telt
+            voor die speler de standaard startrating van <Num value={c("startRating")} />, plus een bonus voor een
+            opgegeven KNLTB-speelsterkte.
           </p>
           <BulletList>
             <li>
@@ -269,7 +285,12 @@ export default async function InfoPage() {
               Speelt de één al in een duo met rating 1400 en is de ander nieuw, dan begint het nieuwe duo op het
               gemiddelde van 1400 en <Num value={c("startRating")} />.
             </li>
-            <li>De zelf opgegeven speelsterkte telt hier niet mee.</li>
+            <li>
+              Speelsterktebonus: <Num value={c("levelStep")} unit="punten" /> per stap sterker dan speelsterkte 9, tot
+              maximaal <Num value={c("unverifiedMaxBonus")} unit="punten" />. Is je speelsterkte door een beheerder
+              geverifieerd, dan is het maximum <Num value={c("verifiedMaxBonus")} unit="punten" />.
+            </li>
+            <li>De bonus gaat alleen omhoog: wie zich lager inschat, begint nooit onder de standaard.</li>
           </BulletList>
         </Details>
         <Details summary="Ontbinden en opnieuw samen spelen">
@@ -294,7 +315,10 @@ export default async function InfoPage() {
           <p>
             De ladder is verdeeld in <strong>tiers</strong>: stroken van <Num value={c("tierSize")} unit="ratingpunten" />
             . Je tier volgt automatisch uit je rating. Duo&apos;s in dezelfde tier zijn ongeveer even sterk, en alleen
-            die mag je uitdagen.
+            die mag je uitdagen. Uitzondering: tijdens de plaatsingsperiode (je eerste{" "}
+            <Num value={c("placementMatches")} unit="wedstrijden" />) mag je ook duo&apos;s tot{" "}
+            <Num value={c("placementTiersUp")} unit="tiers" /> hoger uitdagen, zodat een sterk nieuw duo snel op zijn
+            niveau komt.
           </p>
         }
       >
@@ -321,8 +345,8 @@ export default async function InfoPage() {
         lead={
           <>
             <p>
-              Vanaf de ladder daag je een duo uit dezelfde regio én dezelfde tier uit. Een duo heeft steeds maximaal
-              één lopende uitdaging, als uitdager of als uitgedaagde.
+              Vanaf de ladder daag je een duo uit dezelfde regio én dezelfde tier uit (in de plaatsingsperiode ook
+              hoger, zie Tiers). Een duo heeft steeds maximaal één lopende uitdaging, als uitdager of als uitgedaagde.
             </p>
             <p>
               Het uitgedaagde duo heeft <Num value={c("responseDays")} unit={days(c("responseDays"))} /> om te
@@ -677,7 +701,9 @@ export default async function InfoPage() {
             </p>
             <p>
               Je kunt er ook je KNLTB-speelsterkte (1 tot en met 9) invullen. Die is zelf opgegeven en geen officiële
-              KNLTB-rating: we controleren hem niet en hij telt niet mee voor je rating of voor wie je kunt uitdagen.
+              KNLTB-rating. Hij bepaalt alleen hoe hoog een nieuw duo van je begint (zie Duo&apos;s); daarna telt alleen
+              wat je speelt. Wil je een grotere startbonus, vraag dan verificatie aan: een beheerder vraagt je per
+              e-mail om een schermafbeelding uit MijnKNLTB, die we niet bewaren.
             </p>
           </>
         }

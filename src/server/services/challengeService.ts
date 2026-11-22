@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { getTier, applyForfeitPenalty } from "@/lib/elo";
 import { getConfigNumber } from "@/server/repositories/platformConfigRepository";
+import { canChallengeTier, isInPlacement } from "@/lib/challenge/placement";
+import { getPlacementConfig } from "@/server/services/startRatingService";
 import { notifyChallengeReceived, notifySafely } from "@/server/services/notificationService";
 
 export class ChallengeError extends Error {
@@ -79,7 +81,10 @@ export async function proposeChallenge(
   }
 
   // Uitdagen is bedoeld voor duo's die daadwerkelijk tegen elkaar kunnen
-  // spelen — zelfde regio (fysiek relevant) én zelfde rating-tier (FR-4.2).
+  // spelen — zelfde regio (fysiek relevant) én zelfde rating-tier (FR-4.2),
+  // met als enige uitzondering de plaatsingsperiode: een duo met nog weinig
+  // wedstrijden mag ook enkele tiers HOGER uitdagen (laag B, akkoord PO
+  // 2026-11-22). Omlaag blijft altijd alleen de eigen tier.
   if (challenger.regionId !== challenged.regionId) {
     throw new ChallengeError(
       "Je kunt alleen duo's binnen je eigen regio uitdagen.",
@@ -88,10 +93,18 @@ export async function proposeChallenge(
     );
   }
 
-  const tierSize = await getConfigNumber("rating_tier_size");
-  if (getTier(challenger.currentRating, tierSize) !== getTier(challenged.currentRating, tierSize)) {
+  const [tierSize, placementConfig] = await Promise.all([
+    getConfigNumber("rating_tier_size"),
+    getPlacementConfig(),
+  ]);
+  const challengerTier = getTier(challenger.currentRating, tierSize);
+  const challengedTier = getTier(challenged.currentRating, tierSize);
+  if (!canChallengeTier(challengerTier, challenger.matchesPlayed, challengedTier, placementConfig)) {
+    const inPlacement = isInPlacement(challenger.matchesPlayed, placementConfig) && placementConfig.tiersUp > 0;
     throw new ChallengeError(
-      "Je kunt alleen duo's binnen jouw rating-tier uitdagen.",
+      inPlacement
+        ? `Tijdens de plaatsingsperiode kun je duo's in jouw tier of tot ${placementConfig.tiersUp} ${placementConfig.tiersUp === 1 ? "tier" : "tiers"} hoger uitdagen.`
+        : "Je kunt alleen duo's binnen jouw rating-tier uitdagen.",
       "different_tier",
       400,
     );

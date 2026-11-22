@@ -98,10 +98,14 @@ Een vaste K-factor voor alle duo's leidt tot te trage convergentie voor nieuwe d
 
 > **Gewijzigd (KNLTB-aanvullingen, akkoord PO 2026-09-28).** De v1-regel "iedereen start op 1200" is vervangen door onderstaande regel.
 
-- Per speler wordt een **spelerswaarde** bepaald: het gemiddelde van de huidige ratings van zijn/haar **andere actieve duo's**. Een speler zonder actieve duo's krijgt `platform_config.default_start_rating` (default 1200).
-- Het nieuwe duo start op het **gemiddelde van beide spelerswaarden**, afgerond op een geheel getal (`computeStartRating`, `src/lib/duo/startRating.ts`).
+> **Opnieuw gewijzigd (startrating & plaatsing, akkoord PO 2026-11-22, zie `docs/Advies_Startrating.md`).** Speelsterktebonus (laag A/C) en plaatsingsperiode (laag B, zie §8bis) toegevoegd.
+
+- Per speler wordt een **spelerswaarde** bepaald: het gemiddelde van de huidige ratings van zijn/haar **andere actieve duo's die al minstens één wedstrijd gespeeld hebben**.
+- Heeft een speler zo'n duo niet: `platform_config.default_start_rating` (default 1200) **+ een speelsterktebonus**: `(9 − speelsterkte) × start_rating_level_step` (default 50), begrensd op `start_rating_unverified_max_bonus` (default 200), of op `start_rating_verified_max_bonus` (default 400) als een admin de speelsterkte heeft geverifieerd. De bonus is nooit negatief: wie zich lager inschat, start niet onder de default.
+- Het nieuwe duo start op het **gemiddelde van beide spelerswaarden**, afgerond op een geheel getal (`computeDuoStartRating`, `src/lib/duo/startRating.ts`).
 - `matches_played` begint op 0: het duo is gewoon **provisional** (hoge K, §3), zodat een scheve start snel wordt gecorrigeerd.
-- Bewust **niet** meegenomen: ontbonden duo's (anders kun je een slechte rating "wegontbinden") en de zelf opgegeven KNLTB-speelsterkte (niet geverifieerd, dus manipuleerbaar).
+- **Herberekenen (laag D):** een admin kan de startrating van duo's die nog niets gedaan hebben (0 wedstrijden, geen rating-historie, nooit een challenge) opnieuw laten berekenen, per regio (lanceer-seeding) en automatisch na een verificatie. Geen RatingHistory-rij (een startrating is geen spelresultaat), wel een audit-log.
+- Bewust **niet** meegenomen: ontbonden duo's (anders kun je een slechte rating "wegontbinden").
 
 **Rating shoppen (PRD §11).** Onder de oude regel kon een sterke speler met een zwakke partner een nieuw duo op 1200 beginnen en "goedkoop" winnen in een lage tier. Met de nieuwe regel neemt een sterke speler zijn niveau mee. Omgekeerd kan een zwakke speler die met een sterke speler een duo vormt hoger starten dan zijn eigen niveau; dat duo verliest dan snel punten (provisional K). Resterende gaten: (1) een speler kan eerst zijn sterke duo's ontbinden en daarna een nieuw duo vormen (start dan op de default) — de ontbindings-cooldown en het admin-overzicht zijn hier de mitigatie; (2) het gemiddelde weegt niet naar aantal gespeelde matches. Zie `docs/Technical_Debt.md` ("KNLTB-aanvullingen — profiel, walkover, uitstel, notificaties").
 
@@ -193,6 +197,8 @@ function getTier(rating: number, tierSize: number): number {
 Dit is een **afgeleide** waarde, net als de ladderpositie — niet opgeslagen, altijd herberekend uit `current_rating`. Dit heeft twee gevolgen voor het ratingmodel zelf:
 - De ELO-berekening (§2–§5) verandert niet: die rekent nog steeds op basis van de daadwerkelijke ratings van beide duo's, ongeacht tiergrenzen.
 - Een duo dat vlak over een tiergrens rating wint/verliest, kan van tier wisselen — dit is gewenst gedrag (het model past zich aan) en vereist geen speciale afhandeling in de rekenlogica zelf.
+
+**Plaatsingsperiode (uitzondering op FR-4.2, akkoord PO 2026-11-22).** Een duo met minder dan `placement_max_matches` (default 10) gespeelde wedstrijden mag behalve de eigen tier ook duo's tot `placement_challenge_tiers_up` (default 2; 0 = uit) tiers **hoger** uitdagen; omlaag blijft altijd alleen de eigen tier (`canChallengeTier`, `src/lib/challenge/placement.ts`). ELO beloont winst op een sterker duo vanzelf zwaarder, dus een sterk nieuw duo is snel op niveau. Het hogere duo mag zo'n uitdaging zonder penalty weigeren (weigeren kost nooit iets; alleen niet reageren, FR-4.4).
 
 ### Forfeit-penalty's zijn GEEN ELO-berekening
 Wanneer een challenge eindigt in `expired` (geen reactie) of `unplayed_timeout` (geaccepteerd maar niet gespeeld binnen de speeltermijn), wordt er **geen** `expectedScore`/K-factor-berekening toegepast. In plaats daarvan:

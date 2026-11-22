@@ -22,6 +22,11 @@ export const CONFIG_GROUPS: { id: ConfigGroupId; title: string; description: str
 const KEYS: Record<string, KeyMeta> = {
   rating_tier_size: { group: "ladder", label: "Tier-breedte" },
   default_start_rating: { group: "ladder", label: "Startrating" },
+  start_rating_level_step: { group: "ladder", label: "Startbonus per stap speelsterkte" },
+  start_rating_unverified_max_bonus: { group: "ladder", label: "Max. startbonus (niet geverifieerd)" },
+  start_rating_verified_max_bonus: { group: "ladder", label: "Max. startbonus (geverifieerd)" },
+  placement_max_matches: { group: "challenges", label: "Plaatsingsperiode (wedstrijden)" },
+  placement_challenge_tiers_up: { group: "challenges", label: "Plaatsing: tiers hoger uitdagen" },
   elo_margin_multiplier_max: { group: "ladder", label: "Gamesaldo-multiplier (max)" },
   elo_margin_multiplier_min: { group: "ladder", label: "Gamesaldo-multiplier (min)" },
   inactive_after_days: { group: "ladder", label: "Inactief na" },
@@ -51,7 +56,15 @@ export function unitFor(key: string, value: string): string | null {
   if (key.endsWith("_days")) return one ? "dag" : "dagen";
   if (key.endsWith("_hours")) return "uur";
   if (key.endsWith("_minutes")) return one ? "minuut" : "minuten";
-  if (key === "rating_tier_size" || key === "default_start_rating" || key.endsWith("_penalty")) return "punten";
+  if (
+    key === "rating_tier_size" ||
+    key === "default_start_rating" ||
+    key.endsWith("_penalty") ||
+    key.startsWith("start_rating_")
+  )
+    return "punten";
+  if (key === "placement_max_matches") return one ? "wedstrijd" : "wedstrijden";
+  if (key === "placement_challenge_tiers_up") return one ? "tier" : "tiers";
   if (key.includes("_multiplier")) return "×";
   return null;
 }

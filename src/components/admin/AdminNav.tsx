@@ -1,6 +1,6 @@
 "use client";
 
-import { Gavel, KeyRound, SlidersHorizontal, UserCog } from "lucide-react";
+import { Gavel, KeyRound, SlidersHorizontal, UserCog, Gauge } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -11,6 +11,7 @@ const ITEMS = [
   { href: "/admin/api-clients", label: "API-clients", icon: KeyRound },
   { href: "/admin/platform-config", label: "Platform config", icon: SlidersHorizontal },
   { href: "/admin/users", label: "Gebruikers", icon: UserCog },
+  { href: "/admin/start-ratings", label: "Startratings", icon: Gauge },
 ] as const;
 
 /** Sub-navigatie tussen de beheerpagina's (horizontaal scrollbaar op mobiel). */

@@ -153,19 +153,27 @@ model Region {
 }
 
 model User {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique @db.VarChar(255)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  role         UserRole  @default(USER)
-  isActive     Boolean   @default(false) @map("is_active")
-  activatedAt  DateTime? @map("activated_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                        String    @unique @db.VarChar(255)
+  passwordHash                 String    @map("password_hash") @db.VarChar(255)
+  role                         UserRole  @default(USER)
+  isActive                     Boolean   @default(false) @map("is_active")
+  activatedAt                  DateTime? @map("activated_at")
+  createdAt                    DateTime  @default(now()) @map("created_at")
   // KNLTB-aanvullingen (akkoord PO 2026-09-28). displayName is nullable
   // voor bestaande accounts (publiek getoond via een niet-PII-fallback,
   // nooit het e-mailadres); knltbLevel = ZELF OPGEGEVEN speelsterkte 1-9
   // (CHECK-constraint in de migratie). Bewust GEEN KNLTB-bondsnummer.
-  displayName  String?   @map("display_name") @db.VarChar(40)
-  knltbLevel   Int?      @map("knltb_level") @db.SmallInt
+  displayName                  String?   @map("display_name") @db.VarChar(40)
+  knltbLevel                   Int?      @map("knltb_level") @db.SmallInt
+  // Startrating & plaatsing (akkoord PO 2026-11-22): admin-verificatie van
+  // de opgegeven speelsterkte. Geen bondsnummer/schermafbeelding opgeslagen.
+  knltbLevelVerifiedAt         DateTime? @map("knltb_level_verified_at")
+  knltbLevelVerifiedById       String?   @map("knltb_level_verified_by") @db.Uuid
+  knltbVerificationRequestedAt DateTime? @map("knltb_verification_requested_at")
+
+  knltbLevelVerifiedBy    User?  @relation("KnltbLevelVerifiedBy", fields: [knltbLevelVerifiedById], references: [id], onDelete: SetNull)
+  knltbLevelVerifications User[] @relation("KnltbLevelVerifiedBy")
 
   memberships              DuoMembership[]
   submittedMatches         Match[]                 @relation("MatchSubmittedBy")
@@ -182,6 +190,7 @@ model User {
   notificationLog          NotificationLog[]
 
   @@index([email], map: "idx_app_user_email")
+  @@index([knltbVerificationRequestedAt], map: "idx_app_user_knltb_verification_requested")
   @@map("app_user")
 }
 

@@ -8,7 +8,7 @@ const mockPrisma = {
 };
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
-const { getMyProfile, updateMyProfile } = await import("@/server/services/profileService");
+const { getMyProfile, updateMyProfile, requestKnltbVerification } = await import("@/server/services/profileService");
 
 describe("displayNameSchema", () => {
   it("trimt en normaliseert spaties", () => {
@@ -65,7 +65,15 @@ describe("publicDisplayName", () => {
 });
 
 describe("profileService", () => {
-  const row = { id: "u1", email: "u1@example.com", role: "USER", displayName: null, knltbLevel: null };
+  const row = {
+    id: "u1",
+    email: "u1@example.com",
+    role: "USER",
+    displayName: null,
+    knltbLevel: null,
+    knltbLevelVerifiedAt: null,
+    knltbVerificationRequestedAt: null,
+  };
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -78,7 +86,7 @@ describe("profileService", () => {
       displayName: null,
       hasDisplayName: false,
       knltbLevel: null,
-      knltbLevelIsSelfDeclared: true,
+      knltbVerification: "none",
     });
     expect(profile.publicName).toMatch(/^Speler /);
   });
@@ -89,9 +97,10 @@ describe("profileService", () => {
   });
 
   it("updateMyProfile wijzigt alleen meegegeven velden", async () => {
-    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1" });
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1", knltbLevel: 6 });
     mockPrisma.user.update.mockResolvedValueOnce({ ...row, displayName: "Jan", knltbLevel: 6 });
     const profile = await updateMyProfile("u1", { displayName: "Jan", knltbLevel: 6 });
+    // Ongewijzigde speelsterkte: verificatie blijft staan.
     expect(mockPrisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "u1" }, data: { displayName: "Jan", knltbLevel: 6 } }),
     );
@@ -99,9 +108,73 @@ describe("profileService", () => {
   });
 
   it("updateMyProfile kan de speelsterkte wissen", async () => {
-    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1" });
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1", knltbLevel: null });
     mockPrisma.user.update.mockResolvedValueOnce(row);
     await updateMyProfile("u1", { knltbLevel: null });
     expect(mockPrisma.user.update.mock.calls[0][0].data).toEqual({ knltbLevel: null });
+  });
+
+  it("updateMyProfile: een gewijzigde speelsterkte wist verificatie en openstaande aanvraag", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1", knltbLevel: 3 });
+    mockPrisma.user.update.mockResolvedValueOnce({ ...row, knltbLevel: 2 });
+    const profile = await updateMyProfile("u1", { knltbLevel: 2 });
+    expect(mockPrisma.user.update.mock.calls[0][0].data).toEqual({
+      knltbLevel: 2,
+      knltbLevelVerifiedAt: null,
+      knltbLevelVerifiedBy: { disconnect: true },
+      knltbVerificationRequestedAt: null,
+    });
+    expect(profile.knltbVerification).toBe("none");
+  });
+
+  it("getMyProfile toont de verificatiestatus", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ ...row, knltbLevel: 2, knltbVerificationRequestedAt: new Date() });
+    expect((await getMyProfile("u1")).knltbVerification).toBe("requested");
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ ...row, knltbLevel: 2, knltbLevelVerifiedAt: new Date() });
+    expect((await getMyProfile("u1")).knltbVerification).toBe("verified");
+  });
+});
+
+describe("requestKnltbVerification (laag C)", () => {
+  const base = {
+    id: "u1",
+    email: "u1@example.com",
+    role: "USER",
+    displayName: "Jan",
+    knltbLevel: 2,
+    knltbLevelVerifiedAt: null,
+    knltbVerificationRequestedAt: null,
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it("zet de aanvraagdatum", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(base);
+    mockPrisma.user.update.mockImplementationOnce(async (args: { data: Record<string, unknown> }) => ({ ...base, ...args.data }));
+    const profile = await requestKnltbVerification("u1");
+    expect(mockPrisma.user.update.mock.calls[0][0].data.knltbVerificationRequestedAt).toBeInstanceOf(Date);
+    expect(profile.knltbVerification).toBe("requested");
+  });
+
+  it("zonder speelsterkte: 400", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ ...base, knltbLevel: null });
+    await expect(requestKnltbVerification("u1")).rejects.toMatchObject({ code: "knltb_level_missing", httpStatus: 400 });
+  });
+
+  it("al geverifieerd: 409", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ ...base, knltbLevelVerifiedAt: new Date() });
+    await expect(requestKnltbVerification("u1")).rejects.toMatchObject({ code: "already_verified", httpStatus: 409 });
+  });
+
+  it("idempotent: een tweede aanvraag wijzigt niets", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ ...base, knltbVerificationRequestedAt: new Date("2026-11-01") });
+    const profile = await requestKnltbVerification("u1");
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(profile.knltbVerification).toBe("requested");
+  });
+
+  it("onbekende gebruiker: 404", async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+    await expect(requestKnltbVerification("x")).rejects.toMatchObject({ code: "user_not_found", httpStatus: 404 });
   });
 });

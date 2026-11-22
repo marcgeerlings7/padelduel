@@ -21,6 +21,8 @@ export function ActingDuoPanel({
   entry,
   ladderSize,
   challengeableCount,
+  challengeableTiers,
+  placementMatchesLeft,
   busy,
 }: {
   ownDuos: { id: string; name: string }[];
@@ -30,6 +32,10 @@ export function ActingDuoPanel({
   entry: LadderRow | null;
   ladderSize: number;
   challengeableCount: number;
+  /** Tier-bereik dat dit duo mag uitdagen (plaatsingsperiode: ook hoger). */
+  challengeableTiers: { min: number; max: number };
+  /** Resterende plaatsingswedstrijden (0 = geen plaatsingsperiode). */
+  placementMatchesLeft: number;
   busy: boolean;
 }) {
   const name = ownDuos.find((d) => d.id === actingDuoId)?.name ?? entry?.name ?? "";
@@ -49,20 +55,30 @@ export function ActingDuoPanel({
         </Link>
       </>
     );
-  } else if (challengeableCount === 0) {
-    status = (
-      <>
-        Er staat nu geen ander duo in Tier {entry.tier}. Zodra er een duo in jouw tier komt, kun je het hier
-        uitdagen.
-      </>
-    );
   } else {
-    status = (
+    const inPlacement = placementMatchesLeft > 0 && challengeableTiers.max > challengeableTiers.min;
+    const tiers = inPlacement
+      ? `Tier ${challengeableTiers.min} t/m ${challengeableTiers.max}`
+      : `Tier ${entry.tier}`;
+    const placementNote = inPlacement ? (
       <>
-        Je kunt {challengeableCount === 1 ? "1 duo" : `${challengeableCount} duo's`} in Tier {entry.tier}{" "}
-        uitdagen via de knop met de gekruiste rackets naast hun naam.
+        {" "}
+        Plaatsingsperiode: nog {placementMatchesLeft === 1 ? "1 wedstrijd" : `${placementMatchesLeft} wedstrijden`} waarin
+        je ook hogere tiers mag uitdagen.
       </>
-    );
+    ) : null;
+    status =
+      challengeableCount === 0 ? (
+        <>
+          Er staat nu geen ander duo in {tiers}. Zodra er een duo bij komt, kun je het hier uitdagen.
+          {placementNote}
+        </>
+      ) : (
+        <>
+          Je kunt {challengeableCount === 1 ? "1 duo" : `${challengeableCount} duo's`} in {tiers} uitdagen via de knop
+          met de gekruiste rackets naast hun naam.{placementNote}
+        </>
+      );
   }
 
   return (

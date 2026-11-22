@@ -21,7 +21,10 @@ const mockPrisma = {
 const mockGetConfigNumber = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
-vi.mock("@/server/repositories/platformConfigRepository", () => ({ getConfigNumber: mockGetConfigNumber }));
+vi.mock("@/server/repositories/platformConfigRepository", () => ({
+  getConfigNumber: mockGetConfigNumber,
+  getConfigNumberOrDefault: async (_key: string, defaultValue: number) => defaultValue,
+}));
 
 const { proposeDuo, respondToInvitation, listMyInvitations, setDuoCategory } = await import(
   "@/server/services/duoService"
@@ -49,6 +52,7 @@ beforeEach(() => {
   mockPrisma.duoMembership.count.mockResolvedValue(0);
   mockPrisma.duo.findFirst.mockResolvedValue(null);
   mockPrisma.duoInvitation.findFirst.mockResolvedValue(null);
+  mockPrisma.user.findUnique.mockResolvedValue(null);
 });
 
 describe("respondToInvitation — startrating", () => {
@@ -67,11 +71,27 @@ describe("respondToInvitation — startrating", () => {
     expect(mockPrisma.duo.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ currentRating: 1300, category: "GEMENGD" }),
     });
-    // Alleen ACTIEVE duo's met een actief lidmaatschap tellen mee.
+    // Alleen ACTIEVE, al GESPEELDE duo's met een actief lidmaatschap tellen mee.
     expect(mockPrisma.duo.findMany.mock.calls[0][0].where).toEqual({
       isActive: true,
+      matchesPlayed: { gt: 0 },
       memberships: { some: { userId: "user-1", leftAt: null } },
     });
+  });
+
+  it("speelsterktebonus (laag A/C): ongeverifieerd begrensd, geverifieerd hoger", async () => {
+    mockPrisma.duoInvitation.findUnique.mockResolvedValueOnce(invitation);
+    mockPrisma.duo.findMany.mockResolvedValue([]);
+    mockPrisma.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "user-1"
+        ? { knltbLevel: 1, knltbLevelVerifiedAt: new Date() } // 1200 + 400
+        : { knltbLevel: 2, knltbLevelVerifiedAt: null }, // 1200 + min(350, 200)
+    );
+    mockPrisma.duo.create.mockResolvedValueOnce({ id: "duo-new" });
+
+    await respondToInvitation("invitation-1", "user-2", "accept");
+
+    expect(mockPrisma.duo.create.mock.calls[0][0].data.currentRating).toBe(1500);
   });
 
   it("twee nieuwe spelers: default_start_rating uit platform_config", async () => {

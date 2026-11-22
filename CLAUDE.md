@@ -59,7 +59,7 @@ input-validatie, transacties waar consistentie vereist is.
   e2e-test toe in /tests/e2e (zie playwright.config.ts — draait tegen een
   aparte database op poort 3100, nooit tegen de dev-omgeving op poort 3000).
   `npm run test:e2e` reset die testdatabase eerst volledig. Nieuwe specs gebruiken
-  eigen seed-data (zie scripts/seed.ts: regio Zwolle is voor e2e 08–10) zodat
+  eigen seed-data (zie scripts/seed.ts: regio Zwolle is voor e2e 08–11) zodat
   specs elkaar niet beïnvloeden; selecteer op rol/label/tekst, niet op stylingklassen.
 - Gebruik de bestaande Prisma-modellen; wijzig het schema alleen na expliciete instructie.
   Een al toegepaste migratie wordt nooit achteraf gewijzigd — altijd een nieuwe migratie
@@ -100,6 +100,11 @@ input-validatie, transacties waar consistentie vereist is.
   (naam, optionele speelsterkte/categorie) + startrating nieuw duo uit
   bestaande duo-ratings; gamesaldo in de ELO-formule (forfeits blijven
   buiten de formule). NIET: seizoenen (bewust uitgesteld).
+- Startrating & plaatsing (akkoord PO 2026-11-22, incl. schemawijziging): lagen A–D uit
+  /docs/Advies_Startrating.md — speelsterktebonus op de startrating (alleen omhoog, begrensd),
+  plaatsingsperiode (nieuw duo mag tot N tiers HOGER uitdagen: bewuste uitzondering op
+  "alleen binnen de eigen tier"), admin-verificatie van de speelsterkte, en startratings
+  herberekenen voor ongespeelde duo's. Details: /docs/Technical_Debt.md ("Startrating & plaatsing").
 - Post-v1 + KNLTB-aanvullingen + Court-redesign: gebouwd, gemerged en live op
   2026-09-29 (498 unit tests, 16 e2e-specs groen). Details, beslissingen en
   restrisico's: /docs/Technical_Debt.md (secties "Post-v1", "KNLTB-aanvullingen",

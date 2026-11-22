@@ -22,7 +22,7 @@ function hasNoRecord(entry: LadderRow): boolean {
 
 export type ChallengeState = {
   /** Het eigen duo dat namens de gebruiker uitdaagt (null = niet ingelogd / geen duo in deze regio). */
-  actingDuo: { id: string; tier: number } | null;
+  actingDuo: { id: string; tier: number; maxTier: number } | null;
   /** Het uitdagende duo heeft al een lopende challenge → knoppen uitgeschakeld. */
   busy: boolean;
   /** Duo-id waarvoor nu een uitdaging wordt verstuurd. */
@@ -102,12 +102,14 @@ export function LadderTable({
         {groups.map((group) => {
           const range = tierRange(group.tier, tierSize);
           const isActingTier = actingDuo?.tier === group.tier;
+          // Plaatsingsperiode (akkoord PO 2026-11-22): ook hogere tiers binnen het bereik.
+          const isPlacementTier = !!actingDuo && group.tier > actingDuo.tier && group.tier <= actingDuo.maxTier;
           return (
             <tbody key={group.tier} data-tier={group.tier}>
               {group.entries.map((entry, index) => {
                 const isOwn = ownDuoIds.has(entry.id);
                 const isFirst = index === 0;
-                const canChallenge = Boolean(actingDuo) && !isOwn && isActingTier;
+                const canChallenge = Boolean(actingDuo) && !isOwn && (isActingTier || isPlacementTier);
                 const cell = cn(
                   "border-t align-middle",
                   isFirst ? "border-t-foreground/15 pt-9 pb-3" : "py-3",
@@ -147,6 +149,11 @@ export function LadderTable({
                           {isActingTier ? (
                             <span className="rounded-full bg-primary px-2 py-px text-[0.6875rem] font-semibold text-primary-foreground">
                               Jouw tier
+                            </span>
+                          ) : null}
+                          {isPlacementTier ? (
+                            <span className="rounded-full bg-primary-soft px-2 py-px text-[0.6875rem] font-semibold text-primary">
+                              Plaatsing
                             </span>
                           ) : null}
                         </div>

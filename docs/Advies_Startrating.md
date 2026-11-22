@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Advies, 2026-11-22. Er is niets gebouwd; vraagt PO-akkoord (wijkt deels af van de tier-regel) |
+| **Status** | **Gebouwd** (akkoord PO 2026-11-22, lagen A–D). Zie Technical_Debt.md "Startrating & plaatsing". Verificatie gaat zonder upload: de admin vraagt de schermafbeelding per e-mail op |
 | **Huidige code** | `src/lib/duo/startRating.ts`, `src/lib/elo/kFactor.ts`, `src/lib/profile/validation.ts` |
 
 ## 1. Het probleem

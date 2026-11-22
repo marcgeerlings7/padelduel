@@ -1,6 +1,6 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { BadgeCheck, Clock, Info, ShieldQuestion } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { SectionCard } from "@/components/app/SectionCard";
@@ -117,10 +117,14 @@ export function ProfileForm({
           <p id={`${id}-level-hint`} className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
             <Info aria-hidden className="mt-px size-3.5 shrink-0" />
             <span>
-              Zelf opgegeven, geen officiële KNLTB-rating. We controleren het niet en het telt niet mee voor je rating of
-              voor wie je kunt uitdagen.
+              Zelf opgegeven, geen officiële KNLTB-rating. Een nieuw duo van jou start iets hoger op de ladder als je een
+              sterkere speelsterkte opgeeft (alleen zolang je nog geen gespeeld duo hebt). Laat je speelsterkte
+              verifiëren voor een grotere startbonus.
             </span>
           </p>
+          {!levelChanged && profile.knltbLevel !== null ? (
+            <VerificationStatus profile={profile} onSaved={onSaved} />
+          ) : null}
         </div>
 
         {error ? (
@@ -134,5 +138,67 @@ export function ProfileForm({
         </Button>
       </form>
     </SectionCard>
+  );
+}
+
+/**
+ * Laag C (akkoord PO 2026-11-22): status van de verificatie van de opgeslagen
+ * speelsterkte, met een knop om verificatie aan te vragen.
+ */
+function VerificationStatus({
+  profile,
+  onSaved,
+}: {
+  profile: MyProfileResponse;
+  onSaved: (profile: MyProfileResponse) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function requestVerification() {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await apiFetch<MyProfileResponse>("/api/me/profile/verification", { method: "POST" });
+      onSaved(updated);
+      toast.success("Verificatie aangevraagd");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "De aanvraag is niet gelukt. Probeer het opnieuw.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (profile.knltbVerification === "verified") {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm font-semibold text-win">
+        <BadgeCheck aria-hidden className="size-4" />
+        Speelsterkte geverifieerd
+      </p>
+    );
+  }
+  if (profile.knltbVerification === "requested") {
+    return (
+      <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground">
+        <Clock aria-hidden className="mt-0.5 size-4 shrink-0" />
+        <span>
+          Verificatie aangevraagd. Een beheerder vraagt je per e-mail om een schermafbeelding van je speelsterkte in
+          MijnKNLTB. Die bewaren we niet.
+        </span>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={requestVerification}>
+        <ShieldQuestion aria-hidden />
+        {busy ? "Bezig…" : "Speelsterkte laten verifiëren"}
+      </Button>
+      {error ? (
+        <p role="alert" className="text-sm text-loss">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
