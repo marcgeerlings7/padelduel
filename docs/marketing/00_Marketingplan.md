@@ -6,6 +6,18 @@
 | **Doel** | Eén regio gaat in één keer live met een volle, levendige ladder |
 | **Live app** | https://padelduel.vercel.app |
 
+**Documenten in deze map:**
+[01 Marktonderzoek](01_Marktonderzoek.md) ·
+[02 Testkaarten](02_Testkaarten.md) ·
+[03 Ambassadeursprogramma](03_Ambassadeursprogramma.md) ·
+[04 Campagnedraaiboek](04_Campagnedraaiboek.md) ·
+[05 Content](05_Content.md)
+
+> **Update na het marktonderzoek (01):** 1.000 duo's is realistisch voor een verzorgingsgebied van
+> ≥ 1 miljoen inwoners (bv. Eindhoven of Utrecht). Voor een regio van ~400.000 inwoners
+> (bv. Zwolle) is het unlock-doel **400–500 duo's**. Positionering: *"Je KNLTB-rating zegt hoe
+> goed jíj bent. PadelDuel zegt hoe goed jullie sámen zijn."*
+
 > Let op: een aantal tactieken hieronder vraagt om **nieuwe features** (wachtlijst, teller,
 > referral-tracking, deelkaarten). Die vallen buiten de vastgelegde scope en worden pas
 > gebouwd na expliciet PO-akkoord (zie §8).
@@ -46,8 +58,9 @@ Met multi-duo (gemiddeld ~1,5 duo per speler) zijn **1.000 duo's ≈ 1.300–1.5
 - In 2025 speelden ~876.000 Nederlanders padel, gemiddeld ~350.000 per maand
   (KNLTB/EY, *Padel in cijfers 2025*). Er zijn ~3.000 banen.
 - Een regio van ~400.000 inwoners (bv. Zwolle e.o., ~2,2% van NL) ≈ **~19.000 spelers,
-  ~7.500 maandelijks actief**. 1.000 duo's = **~18% van de maandelijkse spelers** — ambitieus
-  maar haalbaar mét clubpartners. Voor een kleinere stad: zet de drempel op 500.
+  ~7.500 maandelijks actief**. 1.000 duo's = **~18% van de maandelijkse spelers**. Maar slechts
+  ~20–30% daarvan is competitief ingesteld (zie 01 §1 en §4), dus voor een regio van deze omvang
+  is **400–500** het realistische doel; 1.000 vraagt ~1 miljoen inwoners.
 - **Regiokeuze:** kies een regio met veel banen op <25 min reistijd, 3+ grote padelcentra en
   een actieve WhatsApp/club-competitiecultuur.
 
