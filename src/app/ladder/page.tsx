@@ -48,7 +48,9 @@ export default function LadderPage() {
     apiFetch<Region[]>("/api/regions")
       .then((data) => {
         setRegions(data);
-        if (data.length > 0) setSelectedSlug(data[0].slug);
+        // Alleen een standaard kiezen als er nog niets gekozen is: een tweede
+        // (strict-mode) fetch mag een keuze van de gebruiker niet overschrijven.
+        if (data.length > 0) setSelectedSlug((current) => current || data[0].slug);
       })
       .catch(() => {
         setRegions([]);
@@ -97,6 +99,15 @@ export default function LadderPage() {
   // opnieuw draait zodra ladder/regions/myDuos alsnog binnenkomen — met een
   // plain const zou de effect een update missen wanneer myDuos vóór de
   // ladder-data geladen werd (race condition).
+  // Ingelogd: toon standaard de regio van het eerste eigen duo (bijv. demo-
+  // accounts in de demoregio), tenzij de gebruiker zelf al een regio koos.
+  const [regionTouched, setRegionTouched] = useState(false);
+  useEffect(() => {
+    if (regionTouched || !regions || !myDuos || myDuos.length === 0) return;
+    const own = regions.find((r) => r.id === myDuos[0].regionId);
+    if (own && own.slug !== selectedSlug) setSelectedSlug(own.slug);
+  }, [regions, myDuos, regionTouched, selectedSlug]);
+
   const myDuosInRegion = useMemo(
     () => (myDuos ?? []).filter((d) => ladder && ladder.length > 0 && selectedRegion?.id === d.regionId),
     [myDuos, ladder, selectedRegion],
@@ -185,7 +196,10 @@ export default function LadderPage() {
               <NativeSelect
                 id="ladder-region"
                 value={selectedSlug}
-                onChange={(e) => setSelectedSlug(e.target.value)}
+                onChange={(e) => {
+                  setRegionTouched(true);
+                  setSelectedSlug(e.target.value);
+                }}
               >
                 {regions.map((region) => (
                   <option key={region.id} value={region.slug}>

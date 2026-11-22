@@ -123,6 +123,8 @@ input-validatie, transacties waar consistentie vereist is.
 - Env-vars staan in Vercel (`vercel env ls`), nooit in de repo. Productiedata
   alleen via `vercel env pull --environment=production <tijdelijk bestand>` —
   nooit naar `.env.local` (die heeft voorrang op `.env` in `next dev`).
+- Demo-accounts op productie: `demo1..demo5@example.com` in regio "Demo" (datamigratie
+  20261122140000_demo_accounts, verzoek PO 2026-11-22); de demoregio staat altijd achteraan.
 - `scripts/seed.ts` NOOIT tegen productie. Lege omgeving inrichten:
   `scripts/bootstrap-production.ts --region "<naam>" --admin <email>`.
 - Achtergrondjobs (`/api/jobs/run-all`): Vercel Cron dagelijks (Hobby-limiet: een

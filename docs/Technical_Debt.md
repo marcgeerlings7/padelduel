@@ -453,3 +453,12 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 - Geen KNLTB-API-koppeling: er is geen publieke API; partnerverzoek is een open actie voor de PO.
 
 **Tests:** unit (startbonus, plaatsing, services, verificatie, herberekening) → 542 groen; e2e `11-start-rating-placement` (plaatsing omhoog uitdagen, regio herberekenen, verificatie end-to-end) → volledige suite 19/19 groen. Seed: Zwolle users 28–37, duo's 14–18 (alleen e2e 11).
+
+---
+
+## Demo-accounts op productie (verzoek PO 2026-11-22)
+
+**Wat:** datamigratie `20261122140000_demo_accounts`: regio **Demo** (slug `demo`) met vijf geactiveerde spelers `demo1..demo5@example.com` (geen admin; wachtwoord gedeeld met de PO, alleen de bcrypt-hash staat in de migratie) en vijf ongespeelde duo's (multi-duo, verschillende tiers, plaatsingsperiode). E-mailnotificaties staan voor deze accounts uit (`example.com` is gereserveerd). Idempotent (`ON CONFLICT DO NOTHING`).
+**UI:** `/api/regions` zet de demoregio achteraan (`sortRegionsDemoLast`, `src/lib/region/demo.ts`), zodat bezoekers en keuzelijsten standaard een echte regio tonen; de ladder opent voor ingelogde spelers in de regio van hun eerste duo. Daarbij een bestaande race opgelost: een tweede (strict-mode) regio-fetch overschreef de regiokeuze van de gebruiker.
+**Restrisico's:** het wachtwoord is bekend bij iedereen aan wie de PO het geeft; iedereen met dat wachtwoord kan de demo-data wijzigen (uitdagen, uitslagen). Resetten = een nieuwe migratie/handmatige SQL op de vaste id's (`d0000000-…`). Geen e-mailactivatie nodig. Admin-herberekening van de regio Demo wijzigt ook de demo-ratings (alleen ongespeelde duo's).
+**Tests:** e2e `12-demo-accounts` (inloggen, eigen regio als standaard, bezoeker ziet echte regio) → suite 21/21 groen; unit 544 groen.
