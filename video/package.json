@@ -4,7 +4,9 @@
   "description": "Uitlegvideo PadelDuel (Remotion). Los van de Next-app.",
   "scripts": {
     "studio": "remotion studio",
-    "render": "remotion render src/index.ts PadelDuelUitleg out/padelduel-uitleg.mp4"
+    "render": "remotion render src/index.ts PadelDuelUitlegV2 out/padelduel-uitleg-v2.mp4",
+    "render:v1": "remotion render src/index.ts PadelDuelUitleg out/padelduel-uitleg.mp4",
+    "music": "cd music && python3 compose.py"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.545",
