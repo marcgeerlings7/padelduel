@@ -138,9 +138,9 @@ export function NavBar() {
 
       {/* ── Mobiel: app-bar ──────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b bg-background/85 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70 lg:hidden">
-        <Link href="/" className="flex items-center gap-2 text-foreground no-underline" aria-label="Padel Ladder — home">
+        <Link href="/" className="flex items-center gap-2 text-foreground no-underline" aria-label="PadelDuel — home">
           <BrandMark className="size-7" />
-          <span className="font-display text-xl leading-none font-bold">Padel Ladder</span>
+          <span className="font-display text-xl leading-none font-bold">PadelDuel</span>
         </Link>
         <div className="flex items-center gap-1.5">{accountAction}</div>
       </header>

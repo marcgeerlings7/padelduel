@@ -1,5 +1,6 @@
 import { loadFont as loadBarlow } from "@remotion/google-fonts/BarlowCondensed";
 import { loadFont as loadInstrument } from "@remotion/google-fonts/InstrumentSans";
+import { createContext, useContext } from "react";
 import {
   AbsoluteFill,
   Audio,
@@ -19,10 +20,10 @@ import {
  * zelf gecomponeerd en synthetisch gegenereerd (music/compose.py) — rechtenvrij.
  * Scènes vallen op de maat: 120 BPM → 1 maat = 60 frames.
  */
-const { fontFamily: display } = loadBarlow("normal", { weights: ["700", "800"], subsets: ["latin"] });
-const { fontFamily: sans } = loadInstrument("normal", { weights: ["400", "600"], subsets: ["latin"] });
+export const { fontFamily: display } = loadBarlow("normal", { weights: ["700", "800"], subsets: ["latin"] });
+export const { fontFamily: sans } = loadInstrument("normal", { weights: ["400", "600"], subsets: ["latin"] });
 
-const C = {
+export const C = {
   court: "#132f9a",
   courtDeep: "#0c1f6b",
   courtMuted: "#b8c6f5",
@@ -38,6 +39,9 @@ const C = {
   loss: "#b3232d",
   lossSoft: "#fbe6e7",
 };
+
+/** v3: compacte modus — geen ondertitelblokken/subregels (de voice-over vertelt het). */
+export const CompactContext = createContext(false);
 
 const BAR = 60;
 const SCENES = {
@@ -56,17 +60,17 @@ export const TOTAL_FRAMES_V2 = SCENES.outro[1] * BAR;
 // ---------------------------------------------------------------------------
 // Bouwstenen
 // ---------------------------------------------------------------------------
-function useSpring(delay = 0, damping = 16) {
+export function useSpring(delay = 0, damping = 16) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   return spring({ frame: frame - delay, fps, config: { damping, mass: 0.7 } });
 }
 
-function lerp(frame: number, input: [number, number], output: [number, number], ease = Easing.inOut(Easing.cubic)) {
+export function lerp(frame: number, input: [number, number], output: [number, number], ease = Easing.inOut(Easing.cubic)) {
   return interpolate(frame, input, output, { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease });
 }
 
-const Rise: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({
+export const Rise: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({
   delay = 0,
   children,
   style,
@@ -75,7 +79,7 @@ const Rise: React.FC<{ delay?: number; children: React.ReactNode; style?: React.
   return <div style={{ opacity: p, transform: `translateY(${(1 - p) * 50}px)`, ...style }}>{children}</div>;
 };
 
-const Pop: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({
+export const Pop: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({
   delay = 0,
   children,
   style,
@@ -84,7 +88,7 @@ const Pop: React.FC<{ delay?: number; children: React.ReactNode; style?: React.C
   return <div style={{ transform: `scale(${p})`, opacity: Math.min(1, p * 1.5), ...style }}>{children}</div>;
 };
 
-const CourtLines: React.FC<{ opacity?: number }> = ({ opacity = 0.12 }) => (
+export const CourtLines: React.FC<{ opacity?: number }> = ({ opacity = 0.12 }) => (
   <svg width="1080" height="1920" style={{ position: "absolute", inset: 0, opacity }} aria-hidden>
     <g stroke={C.white} strokeWidth={6} fill="none">
       <rect x={90} y={160} width={900} height={1600} />
@@ -96,7 +100,7 @@ const CourtLines: React.FC<{ opacity?: number }> = ({ opacity = 0.12 }) => (
   </svg>
 );
 
-const Logo: React.FC<{ size?: number; color?: string }> = ({ size = 60, color = C.white }) => (
+export const Logo: React.FC<{ size?: number; color?: string }> = ({ size = 60, color = C.white }) => (
   <div style={{ display: "flex", alignItems: "center", gap: size * 0.3 }}>
     <div style={{ width: size, height: size, borderRadius: size * 0.22, background: C.white, position: "relative", boxShadow: "0 0 0 3px rgba(0,0,0,.06)" }}>
       <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 3, background: C.court }} />
@@ -107,7 +111,7 @@ const Logo: React.FC<{ size?: number; color?: string }> = ({ size = 60, color = 
   </div>
 );
 
-const Headline: React.FC<{ kicker?: string; title: React.ReactNode; dark?: boolean; delay?: number }> = ({
+export const Headline: React.FC<{ kicker?: string; title: React.ReactNode; dark?: boolean; delay?: number }> = ({
   kicker,
   title,
   dark = true,
@@ -132,19 +136,23 @@ const Caption: React.FC<{ children: React.ReactNode; delay: number; top: number;
   delay,
   top,
   dark = true,
-}) => (
-  <Rise delay={delay} style={{ position: "absolute", left: 90, right: 90, top }}>
-    <div style={{ fontFamily: sans, fontSize: 42, lineHeight: 1.3, color: dark ? C.courtMuted : C.muted }}>{children}</div>
-  </Rise>
-);
+}) => {
+  const compact = useContext(CompactContext);
+  if (compact) return null;
+  return (
+    <Rise delay={delay} style={{ position: "absolute", left: 90, right: 90, top }}>
+      <div style={{ fontFamily: sans, fontSize: 42, lineHeight: 1.3, color: dark ? C.courtMuted : C.muted }}>{children}</div>
+    </Rise>
+  );
+};
 
-const Avatar: React.FC<{ initials: string; color: string; size?: number }> = ({ initials, color, size = 150 }) => (
+export const Avatar: React.FC<{ initials: string; color: string; size?: number }> = ({ initials, color, size = 150 }) => (
   <div style={{ width: size, height: size, borderRadius: "50%", background: color, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: display, fontWeight: 800, fontSize: size * 0.42, color: C.white, border: `6px solid ${C.white}`, boxShadow: "0 20px 40px rgba(0,0,0,.25)" }}>
     {initials}
   </div>
 );
 
-const Num: React.FC<{ from: number; to: number; start: number; end: number; prefix?: string }> = ({ from, to, start, end, prefix = "" }) => {
+export const Num: React.FC<{ from: number; to: number; start: number; end: number; prefix?: string }> = ({ from, to, start, end, prefix = "" }) => {
   const frame = useCurrentFrame();
   return <>{prefix + Math.round(lerp(frame, [start, end], [from, to], Easing.out(Easing.cubic)))}</>;
 };
@@ -180,7 +188,7 @@ const SceneFade: React.FC<{ duration: number; children: React.ReactNode }> = ({ 
 // ---------------------------------------------------------------------------
 // Scènes
 // ---------------------------------------------------------------------------
-const Hook: React.FC = () => {
+export const Hook: React.FC = () => {
   const frame = useCurrentFrame();
   // bal stuitert op de 'pok's in de muziek (0 s, 1 s, 1,5 s)
   const y = frame < 30 ? lerp(frame, [0, 30], [0, 1]) : frame < 45 ? lerp(frame, [30, 45], [0, 1]) : 1;
@@ -230,7 +238,7 @@ const Problem: React.FC = () => {
   );
 };
 
-const DuoCard: React.FC<{ name: string; players: string; rating: React.ReactNode; accent?: string; style?: React.CSSProperties }> = ({
+export const DuoCard: React.FC<{ name: string; players: string; rating: React.ReactNode; accent?: string; style?: React.CSSProperties }> = ({
   name,
   players,
   rating,
@@ -249,7 +257,7 @@ const DuoCard: React.FC<{ name: string; players: string; rating: React.ReactNode
   </div>
 );
 
-const Duo: React.FC = () => {
+export const Duo: React.FC = () => {
   const frame = useCurrentFrame();
   const merge = lerp(frame, [10, 34], [0, 1], Easing.inOut(Easing.cubic));
   const card1 = useSpring(30, 14);
@@ -321,7 +329,7 @@ const Token: React.FC<{ label: string; x: number; y: number; you?: boolean; dim?
   );
 };
 
-const Check: React.FC<{ x: number; y: number; delay: number; ok: boolean }> = ({ x, y, delay, ok }) => (
+export const Check: React.FC<{ x: number; y: number; delay: number; ok: boolean }> = ({ x, y, delay, ok }) => (
   <Pop delay={delay} style={{ position: "absolute", left: x - 32, top: y - 32 }}>
     <div style={{ width: 64, height: 64, borderRadius: "50%", background: ok ? C.win : C.loss, color: C.white, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontWeight: 600, fontSize: 40, border: `4px solid ${C.white}` }}>
       {ok ? "✓" : "✕"}
@@ -329,7 +337,7 @@ const Check: React.FC<{ x: number; y: number; delay: number; ok: boolean }> = ({
   </Pop>
 );
 
-const Tiers: React.FC = () => {
+export const Tiers: React.FC = () => {
   const yMid13 = tierY(13) + TIER_H / 2;
   return (
     <AbsoluteFill style={{ background: C.courtDeep, overflow: "hidden" }}>
@@ -353,7 +361,7 @@ const Tiers: React.FC = () => {
   );
 };
 
-const Placement: React.FC = () => {
+export const Placement: React.FC = () => {
   const frame = useCurrentFrame();
   // nieuw duo start in tier 12, wint tegen tier 14 en klimt naar tier 13
   const climb = lerp(frame, [110, 140], [0, 1], Easing.out(Easing.back(1.2)));
@@ -396,8 +404,9 @@ const FLOW_STEPS: { title: string; sub: string }[] = [
   { title: "Uitslag: 6-4 6-3", sub: "tegenstander bevestigt" },
 ];
 
-const Flow: React.FC = () => {
+export const Flow: React.FC = () => {
   const frame = useCurrentFrame();
+  const compact = useContext(CompactContext);
   const stepGap = 230;
   const lineP = lerp(frame, [10, 150], [0, 1], Easing.linear);
   const top0 = 600;
@@ -414,7 +423,7 @@ const Flow: React.FC = () => {
             </Pop>
             <Rise delay={d + 4} style={{ position: "absolute", left: 150, top: 4, width: 760 }}>
               <div style={{ fontFamily: display, fontWeight: 800, fontSize: 62, color: C.ink, lineHeight: 1 }}>{s.title}</div>
-              <div style={{ fontFamily: sans, fontSize: 34, color: C.muted, marginTop: 8 }}>{s.sub}</div>
+              {compact ? null : <div style={{ fontFamily: sans, fontSize: 34, color: C.muted, marginTop: 8 }}>{s.sub}</div>}
             </Rise>
           </div>
         );

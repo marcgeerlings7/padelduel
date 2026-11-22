@@ -22,7 +22,7 @@ const sans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Padel Ladder",
+  title: "PadelDuel",
   description: "Vereniging-onafhankelijke ranked ladder voor padel-duo's",
 };
 

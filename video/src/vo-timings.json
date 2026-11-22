@@ -1,0 +1,50 @@
+{
+  "hook": {
+    "seconds": 3.262,
+    "text": "Jullie denken dat jullie het beste duo zijn? Bewijs het."
+  },
+  "problem": {
+    "seconds": 2.972,
+    "text": "Je rating meet alleen jou. Maar padel speel je samen."
+  },
+  "duo": {
+    "seconds": 6.861,
+    "text": "Op PadelDuel krijgt elk duo een eigen rating. Speel je met meerdere partners? Dan telt elke combinatie apart."
+  },
+  "tiers": {
+    "seconds": 4.702,
+    "text": "Je daagt duo's van jouw niveau uit, in je hele regio. Nooit kansloos, nooit saai."
+  },
+  "placement": {
+    "seconds": 5.631,
+    "text": "Nieuw duo? In je eerste tien wedstrijden mag je ook hoger uitdagen. Zo sta je snel op je echte niveau."
+  },
+  "flow": {
+    "seconds": 6.014,
+    "text": "Uitdagen. Binnen vijf dagen reageren. Spelen, en de uitslag invoeren. Afspraak is afspraak."
+  },
+  "screens": {
+    "seconds": 3.239,
+    "text": "Alles regel je in de app. De baan boek je gewoon bij je club."
+  },
+  "outro": {
+    "seconds": 7.117,
+    "text": "Je rating zegt hoe goed jij bent. PadelDuel zegt hoe goed jullie samen zijn. Probeer de demo op padelduel punt vercel punt app."
+  },
+  "s_hook": {
+    "seconds": 2.02,
+    "text": "Jullie denken dat jullie het beste duo zijn?"
+  },
+  "s_duo": {
+    "seconds": 2.647,
+    "text": "Op PadelDuel krijgt elk duo een eigen rating."
+  },
+  "s_tiers": {
+    "seconds": 2.798,
+    "text": "Daag duo's van jouw niveau uit, in je hele regio."
+  },
+  "s_outro": {
+    "seconds": 3.936,
+    "text": "Bewijs het. Probeer de demo op padelduel punt vercel punt app."
+  }
+}

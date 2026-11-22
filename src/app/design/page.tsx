@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { DesignShowcase } from "./DesignShowcase";
 
-export const metadata = { title: "Design system — Padel Ladder" };
+export const metadata = { title: "Design system — PadelDuel" };
 
 /**
  * Levende catalogus van het Court-design system (docs/Design_System.md).

@@ -4,10 +4,13 @@ Volledig in code gegenereerd (geen samples) -> rechtenvrij, geen licentie nodig.
 
 120 BPM, 4/4, A-mineur (Am - F - C - G). 1 maat = 2 s = 60 frames bij 30 fps.
 Structuur (maten): 0-2 intro | 2-17 beat | 17-19 break | 19-24 beat | 24-25 outro | 25 slotakkoord.
-Uitvoer: ../public/audio/music.wav (44.1 kHz, stereo, 16-bit).
+Uitvoer: ../public/audio/<preset>.wav (44.1 kHz, stereo, 16-bit).
 
-    python3 compose.py
+    python3 compose.py            # v2 -> music.wav
+    python3 compose.py v3         # uitlegvideo v3 -> music-v3.wav (rustiger onder de voice-over)
+    python3 compose.py social     # korte social-versie -> music-social.wav
 """
+import sys
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import butter, sosfilt
@@ -16,7 +19,24 @@ SR = 44100
 BPM = 120
 BEAT = 60 / BPM
 BAR = 4 * BEAT
-BARS = 26
+PRESET = sys.argv[1] if len(sys.argv) > 1 else "v2"
+# per preset: aantal maten, maten met beat, break-maten, intro-maten,
+# balwissels (s) en ducking (muziekvolume onder de voice-over)
+PRESETS = {
+    "v2": dict(bars=26, beat=set(range(2, 17)) | set(range(19, 24)), brk={17, 18}, intro=2,
+               hits=[0.0, 1.0, 1.5], whooshes=[b * 2.0 - 0.45 for b in (2, 4, 7, 10, 13, 17, 19, 22)],
+               gain=1.0, out="music.wav"),
+    # v3: scènes 4,4,8,6,8,8,4,10 s → wissels op 4,8,16,22,30,38,42 s
+    "v3": dict(bars=26, beat=set(range(2, 21)), brk={21}, intro=2,
+               hits=[t - 0.25 for t in (4, 8, 16, 22, 30, 38, 42)], whooshes=[t - 0.3 for t in (4, 8, 16, 22, 30, 38, 42)],
+               gain=0.55, out="music-v3.wav"),
+    # social: scènes 4,4,4,8 s → wissels op 4,8,12 s
+    "social": dict(bars=10, beat=set(range(1, 9)), brk=set(), intro=1,
+                   hits=[t - 0.25 for t in (4, 8, 12)], whooshes=[t - 0.3 for t in (4, 8, 12)],
+                   gain=0.6, out="music-social.wav"),
+}
+P = PRESETS[PRESET]
+BARS = P["bars"]
 N = int(BARS * BAR * SR) + SR  # 1 s staart
 L = np.zeros(N)
 R = np.zeros(N)
@@ -145,8 +165,9 @@ CHORDS = [  # Am, F, C, G
     ("G2", ["G3", "B3", "D4"]),
 ]
 
-BEAT_BARS = set(range(2, 17)) | set(range(19, 24))
-BREAK_BARS = {17, 18}
+BEAT_BARS = P["beat"]
+BREAK_BARS = P["brk"]
+INTRO = P["intro"]
 
 for bar in range(BARS):
     t0 = bar * BAR
@@ -162,14 +183,14 @@ for bar in range(BARS):
         add(ball_hit(), t0 + 0.02, pan=0.2)
         continue
 
-    cutoff = 700 if bar < 2 else (1000 if bar in BREAK_BARS or bar == 24 else 1600)
+    cutoff = 700 if bar < INTRO else (1000 if bar in BREAK_BARS or bar == BARS - 2 else 1600)
     add(pad(freqs, BAR, cutoff), t0, gain=1.0)
 
     # arpeggio (16e), in de intro gedempt
     arp = freqs + [freqs[0] * 2]
     for k in range(16):
         f = arp[[0, 1, 2, 3, 2, 1, 2, 3][k % 8]] * 2
-        g = 0.5 if bar < 2 else (0.9 if bar in BREAK_BARS else 0.7)
+        g = 0.5 if bar < INTRO else (0.9 if bar in BREAK_BARS else 0.7)
         add(pluck(f), t0 + k * BEAT / 4, pan=0.35 if k % 2 else -0.35, gain=g)
 
     if bar in BEAT_BARS:
@@ -181,20 +202,23 @@ for bar in range(BARS):
         add(hat(open_=True), t0 + 3.5 * BEAT, pan=0.3)
         for k in range(8):
             add(bass(note(root), BEAT / 2 * 0.9), t0 + k * BEAT / 2)
-    elif bar < 2:
+    elif bar < INTRO:
         for k in range(8):
             add(hat(), t0 + k * BEAT / 2, pan=0.25, gain=0.5)
 
 # Geluidseffecten, synchroon met de video (seconden)
-for s_ in (0.0, 1.0, 1.5):
-    add(ball_hit(), s_, pan=-0.2 if s_ else 0.2)
-for bar in (2, 4, 7, 10, 13, 17, 19, 22):
-    add(whoosh(), bar * BAR - 0.45, pan=0.0)
+# muziek (alles behalve effecten) zachter onder een voice-over
+L *= P["gain"]
+R *= P["gain"]
+for s_ in P["hits"]:
+    add(ball_hit(), max(0.0, s_), pan=0.2)
+for w in P["whooshes"]:
+    add(whoosh(), max(0.0, w), pan=0.0)
 
 mix = np.stack([L, R], axis=1)
 mix = np.tanh(mix * 1.4) / np.tanh(1.4)  # zachte limiter
 fade = int(0.8 * SR)
 mix[-fade:] *= np.linspace(1, 0, fade)[:, None]
-mix = mix / np.max(np.abs(mix)) * 0.89
-wavfile.write("../public/audio/music.wav", SR, (mix * 32767).astype(np.int16))
-print(f"music.wav: {len(mix) / SR:.1f} s")
+mix = mix / np.max(np.abs(mix)) * (0.89 if PRESET == "v2" else 0.5)
+wavfile.write(f"../public/audio/{P['out']}", SR, (mix * 32767).astype(np.int16))
+print(f"{P['out']}: {len(mix) / SR:.1f} s")

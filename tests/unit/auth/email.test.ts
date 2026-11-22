@@ -9,7 +9,7 @@ import {
 
 const MESSAGE: EmailMessage = {
   to: "speler@example.com",
-  subject: "Activeer je Padel Ladder account",
+  subject: "Activeer je PadelDuel-account",
   body: "Klik hier: http://localhost:3000/activate?token=abc",
 };
 const API_KEY = "re_test_supergeheim_123";
@@ -87,13 +87,13 @@ describe("sendEmail — via Resend", () => {
   });
 
   it("gebruikt EMAIL_FROM als die gezet is", async () => {
-    vi.stubEnv("EMAIL_FROM", "Padel Ladder <noreply@padelduel.nl>");
+    vi.stubEnv("EMAIL_FROM", "PadelDuel <noreply@padelduel.nl>");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "email-456" }));
 
     await sendEmail(MESSAGE);
 
     const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(JSON.parse(init.body as string).from).toBe("Padel Ladder <noreply@padelduel.nl>");
+    expect(JSON.parse(init.body as string).from).toBe("PadelDuel <noreply@padelduel.nl>");
   });
 
   it("geeft een fout-resultaat terug (gooit niet) bij een HTTP-fout, zonder de API-key te lekken", async () => {

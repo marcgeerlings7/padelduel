@@ -29,7 +29,7 @@ export type EmailSendResult =
   | { ok: false; provider: "resend"; error: string };
 
 export const RESEND_API_URL = "https://api.resend.com/emails";
-export const DEFAULT_EMAIL_FROM = "Padel Ladder <onboarding@resend.dev>";
+export const DEFAULT_EMAIL_FROM = "PadelDuel <onboarding@resend.dev>";
 const RESEND_TIMEOUT_MS = 10_000;
 const MAX_ERROR_DETAIL_LENGTH = 200;
 
@@ -113,7 +113,7 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
 export function buildActivationEmail(email: string, activationUrl: string): EmailMessage {
   return {
     to: email,
-    subject: "Activeer je Padel Ladder account",
+    subject: "Activeer je PadelDuel-account",
     body: `Klik op de volgende link om je account te activeren (verloopt na 24 uur):\n${activationUrl}`,
   };
 }

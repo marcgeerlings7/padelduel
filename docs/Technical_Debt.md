@@ -462,3 +462,9 @@ Eén schemamigratie: `20260928150000_knltb_profile_walkover_postponement_notific
 **UI:** `/api/regions` zet de demoregio achteraan (`sortRegionsDemoLast`, `src/lib/region/demo.ts`), zodat bezoekers en keuzelijsten standaard een echte regio tonen; de ladder opent voor ingelogde spelers in de regio van hun eerste duo. Daarbij een bestaande race opgelost: een tweede (strict-mode) regio-fetch overschreef de regiokeuze van de gebruiker.
 **Restrisico's:** het wachtwoord is bekend bij iedereen aan wie de PO het geeft; iedereen met dat wachtwoord kan de demo-data wijzigen (uitdagen, uitslagen). Resetten = een nieuwe migratie/handmatige SQL op de vaste id's (`d0000000-…`). Geen e-mailactivatie nodig. Admin-herberekening van de regio Demo wijzigt ook de demo-ratings (alleen ongespeelde duo's).
 **Tests:** e2e `12-demo-accounts` (inloggen, eigen regio als standaard, bezoeker ziet echte regio) → suite 21/21 groen; unit 544 groen.
+
+---
+
+## Naam PadelDuel (besluit PO 2026-11-22)
+
+De app heet voortaan **PadelDuel** in alle zichtbare tekst: header/merk, paginatitels, `/info`, `/design`, de afzendernaam van e-mails (`DEFAULT_EMAIL_FROM`), het onderwerp van de activatiemail en de voettekst/onderwerpen van notificatiemails. Codecommentaar en documenttitels die "Padel Ladder" noemen zijn bewust ongewijzigd (geen functionele impact). Let op: staat `EMAIL_FROM` in Vercel nog op "Padel Ladder <…>", pas die env-var dan zelf aan.

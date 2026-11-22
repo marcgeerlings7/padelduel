@@ -10,7 +10,7 @@ import { getConfigNumber, getConfigNumberOrDefault } from "@/server/repositories
 import { getPlacementConfig, getStartRatingConfig } from "@/server/services/startRatingService";
 
 export const metadata: Metadata = {
-  title: "Uitleg · Padel Ladder",
+  title: "Uitleg · PadelDuel",
   description:
     "Hoe de ladder, tiers, uitdagingen, uitstel, walkovers, de ELO-rating, statistieken, geschillen en e-mailmeldingen werken.",
 };
@@ -191,7 +191,7 @@ export default async function InfoPage() {
   return (
     <Page>
       <PageHeader
-        title="Hoe werkt Padel Ladder?"
+        title="Hoe werkt PadelDuel?"
         description="Van de ladder tot de precieze ratingberekening. Elk onderdeel begint met de kern; klap een blok open voor de details en exacte getallen."
       />
 

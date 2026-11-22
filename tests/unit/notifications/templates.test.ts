@@ -29,7 +29,7 @@ describe("buildNotificationEmail", () => {
     (_kind, content) => {
       const email = buildNotificationEmail("jan@example.com", "Jan", content, BASE);
       expect(email.to).toBe("jan@example.com");
-      expect(email.subject).toMatch(/^Padel Ladder — /);
+      expect(email.subject).toMatch(/^PadelDuel — /);
       expect(email.body).toContain("Hoi Jan,");
       expect(email.body).toContain(`${BASE}/challenges`);
       expect(email.body).toContain(`${BASE}/profile`);

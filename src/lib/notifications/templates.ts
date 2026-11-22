@@ -221,7 +221,7 @@ export function buildNotificationEmail(
   const preferencesUrl = `${baseUrl}/profile`;
   const greeting = `Hoi ${recipientName},`;
   const footer =
-    "Je ontvangt deze e-mail omdat je lid bent van een duo op Padel Ladder. " +
+    "Je ontvangt deze e-mail omdat je lid bent van een duo op PadelDuel. " +
     `Wil je dit soort berichten niet meer ontvangen? Pas je meldingsvoorkeuren aan via ${preferencesUrl}`;
 
   const body = [greeting, "", ...paragraphs.flatMap((p) => [p, ""]), `${ctaLabel}: ${ctaUrl}`, "", "—", footer].join(
@@ -234,9 +234,9 @@ export function buildNotificationEmail(
     ...paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`),
     `<p><a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:10px 16px;background:#1f2937;color:#ffffff;text-decoration:none;border-radius:6px">${escapeHtml(ctaLabel)}</a></p>`,
     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">',
-    `<p style="font-size:12px;color:#6b7280">Je ontvangt deze e-mail omdat je lid bent van een duo op Padel Ladder. Wil je dit soort berichten niet meer ontvangen? <a href="${escapeHtml(preferencesUrl)}" style="color:#6b7280">Pas je meldingsvoorkeuren aan</a>.</p>`,
+    `<p style="font-size:12px;color:#6b7280">Je ontvangt deze e-mail omdat je lid bent van een duo op PadelDuel. Wil je dit soort berichten niet meer ontvangen? <a href="${escapeHtml(preferencesUrl)}" style="color:#6b7280">Pas je meldingsvoorkeuren aan</a>.</p>`,
     "</div>",
   ].join("\n");
 
-  return { to, subject: `Padel Ladder — ${subject}`, body, html };
+  return { to, subject: `PadelDuel — ${subject}`, body, html };
 }
