@@ -12,7 +12,8 @@
 [03 Ambassadeursprogramma](03_Ambassadeursprogramma.md) ·
 [04 Campagnedraaiboek](04_Campagnedraaiboek.md) ·
 [05 Content](05_Content.md) ·
-[06 USP](06_USP.md)
+[06 USP](06_USP.md) ·
+[07 Verdienmodel](07_Verdienmodel.md)
 
 > **Update na het marktonderzoek (01):** 1.000 duo's is realistisch voor een verzorgingsgebied van
 > ≥ 1 miljoen inwoners (bv. Eindhoven of Utrecht). Voor een regio van ~400.000 inwoners
