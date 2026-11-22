@@ -10,3 +10,18 @@ export function sortRegionsDemoLast<T extends { slug: string }>(regions: readonl
   const demo = regions.filter((r) => r.slug === DEMO_REGION_SLUG);
   return [...real, ...demo];
 }
+
+/**
+ * Publieke demo-accounts (migratie 20261122140000_demo_accounts). Bewust
+ * zichtbaar op de inlogpagina: gewone spelers zonder adminrechten, alleen
+ * actief in de demoregio, zonder e-mailnotificaties.
+ */
+export const DEMO_PASSWORD = "PadelDemo2026!";
+
+export const DEMO_ACCOUNTS: readonly { email: string; name: string }[] = [
+  { email: "demo1@example.com", name: "Demo Sanne" },
+  { email: "demo2@example.com", name: "Demo Joris" },
+  { email: "demo3@example.com", name: "Demo Fleur" },
+  { email: "demo4@example.com", name: "Demo Tim" },
+  { email: "demo5@example.com", name: "Demo Noor" },
+];

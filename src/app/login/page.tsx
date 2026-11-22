@@ -12,6 +12,7 @@ import { PasswordInput } from "@/components/auth/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/region/demo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -113,12 +114,37 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <aside aria-label="Testaccount" className="rounded-lg border border-dashed px-4 py-3 text-sm">
-        <p className="font-semibold">Testaccount</p>
-        <p className="mt-0.5 text-muted-foreground">
-          <span className="tabular">user1@example.com</span> met wachtwoord{" "}
-          <code className="rounded-sm bg-muted px-1 py-0.5 text-[0.8125rem] text-foreground">PadelTest123!</code>
+      <aside aria-labelledby={`${id}-demo-title`} className="rounded-lg border border-dashed px-4 py-3 text-sm">
+        <p id={`${id}-demo-title`} className="font-semibold">
+          Demo-accounts
         </p>
+        <p className="mt-0.5 text-muted-foreground">
+          Probeer de app in de regio Demo. Wachtwoord voor alle accounts:{" "}
+          <code className="rounded-sm bg-muted px-1 py-0.5 text-[0.8125rem] text-foreground">{DEMO_PASSWORD}</code>
+        </p>
+        <ul className="mt-2 flex flex-col">
+          {DEMO_ACCOUNTS.map((account) => (
+            <li key={account.email} className="flex items-center justify-between gap-3 border-t py-1.5 first:border-t-0">
+              <span className="flex min-w-0 flex-col">
+                <span className="font-semibold">{account.name}</span>
+                <span className="truncate text-muted-foreground">{account.email}</span>
+              </span>
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={() => {
+                  setEmail(account.email);
+                  setPassword(DEMO_PASSWORD);
+                  setError(null);
+                }}
+              >
+                Invullen
+                <span className="sr-only"> met {account.name}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
       </aside>
     </AuthLayout>
   );
