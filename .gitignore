@@ -45,3 +45,7 @@ next-env.d.ts
 
 # Agent-worktrees van Claude Code
 /.claude/worktrees/
+
+# Remotion-uitlegvideo (eigen dependencies en render-output)
+video/node_modules/
+video/out/
